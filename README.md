@@ -92,6 +92,30 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
+## TNV launch configuration
+
+The site is safe-by-default: preview builds emit `noindex` metadata and an
+`X-Robots-Tag` header, and the sitemap remains empty until launch is explicitly
+approved.
+
+- `SITE_LAUNCH_READY=true` enables indexing and the production sitemap. Set it
+  only after verified company facts and technical documents replace every
+  review marker.
+- `SITE_URL=https://example.com` sets canonical, sitemap, social, and structured
+  data URLs to the company-controlled production origin.
+- `INQUIRY_WEBHOOK_URL=https://...` enables inquiry delivery. Without it, the
+  form returns an honest delivery error instead of pretending submission.
+- `INQUIRY_WEBHOOK_TOKEN=...` optionally adds a bearer token to webhook calls.
+
+The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
+`area`, `company`, `country`, `requirement`, optional `productCode`, and
+`locale`. Keep it HTTPS-only, validate again downstream, and store secrets in
+deployment bindings rather than source control.
+
+Before setting `SITE_LAUNCH_READY=true`, run `npm run lint`,
+`npx tsc --noEmit`, and `npm test`, then verify the inquiry against the real
+recipient workflow.
+
 ## Learn More
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)

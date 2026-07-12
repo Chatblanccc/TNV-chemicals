@@ -1,5 +1,24 @@
 # TNV Chemicals design QA
 
+## 2026-07-12 audit implementation pass
+
+- Preserved the Material Atlas composition, imagery, warm-paper/navy palette,
+  editorial hierarchy, and application-first buyer journey.
+- Replaced broken build-machine font URLs with self-hosted Manrope and
+  Cormorant Garamond WOFF2 assets; computed styles now resolve correctly.
+- Tightened the homepage promise around packaging, paper, and label printing;
+  localized the remaining homepage evidence and closing-CTA headings.
+- Verified no horizontal overflow at 1440, 1024, 768, 390, and 360 CSS-pixel
+  viewports.
+- Verified the mobile menu locks background scroll, includes the language
+  switcher, closes with Escape, and returns focus to the trigger.
+- Verified product-code handoff into the RFQ, 16px mobile controls, accessible
+  validation, privacy acknowledgement, and an honest unconfigured-delivery
+  error state.
+- Preview status remains intentionally visible because legal identity, contact
+  details, certifications, and TDS/SDS files have not been supplied. The build
+  therefore remains noindex by default.
+
 - Source visual truth: `design-reference-option-3.png`
 - Implementation screenshot: `qa/implementation-home-1024.png`
 - Side-by-side comparison: `qa/comparison-source-vs-implementation.png`

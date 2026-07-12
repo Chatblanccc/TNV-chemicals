@@ -2,35 +2,68 @@
 
 import Link from "next/link";
 import { ArrowUpRight, List, X } from "@phosphor-icons/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type NavItem = { href: string; label: string };
 
-export function MobileNav({ items, ctaHref, ctaLabel }: { items: NavItem[]; ctaHref: string; ctaLabel: string }) {
+export function MobileNav({ items, ctaHref, ctaLabel, languageHref, languageLabel, labels }: { items: NavItem[]; ctaHref: string; ctaLabel: string; languageHref: string; languageLabel: string; labels: { open: string; close: string; navigation: string } }) {
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        window.requestAnimationFrame(() => buttonRef.current?.focus());
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
   return <div className="mobile-nav">
-    <button className="menu-button" type="button" aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(value => !value)}>
+    <button ref={buttonRef} className="menu-button" type="button" aria-label={open ? labels.close : labels.open} aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen(value => !value)}>
       {open ? <X size={23} weight="regular" /> : <List size={25} weight="regular" />}
     </button>
     {open && <div className="mobile-menu" id="mobile-menu">
-      <nav aria-label="Mobile navigation">{items.map(item => <Link key={item.href} href={item.href} onClick={() => setOpen(false)}>{item.label}<ArrowUpRight size={18} /></Link>)}</nav>
+      <nav aria-label={labels.navigation}>{items.map(item => <Link key={item.href} href={item.href} onClick={() => setOpen(false)}>{item.label}<ArrowUpRight size={18} /></Link>)}</nav>
+      <Link className="mobile-language" href={languageHref} onClick={() => setOpen(false)}>{languageLabel}<ArrowUpRight size={18} /></Link>
       <Link className="button" href={ctaHref} onClick={() => setOpen(false)}>{ctaLabel}<ArrowUpRight size={18} /></Link>
     </div>}
   </div>;
 }
 
-type InquiryErrors = Partial<Record<"email" | "area" | "company" | "country" | "requirement", string>>;
+type InquiryErrors = Partial<Record<"email" | "area" | "company" | "country" | "requirement" | "privacyAccepted", string>>;
 
-export function InquiryForm({ compact = false, labels }: {
+export function InquiryForm({ compact = false, labels, productCode, locale = "en", privacyHref }: {
   compact?: boolean;
   labels: Record<string, string>;
+  productCode?: string;
+  locale?: "en" | "zh";
+  privacyHref?: string;
+}) {
+  return <InquiryFormInner compact={compact} labels={labels} productCode={productCode} locale={locale} privacyHref={privacyHref} />;
+}
+
+function InquiryFormInner({ compact = false, labels, productCode, locale = "en", privacyHref = "/en/privacy-policy" }: {
+  compact?: boolean;
+  labels: Record<string, string>;
+  productCode?: string;
+  locale?: "en" | "zh";
+  privacyHref?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [errors, setErrors] = useState<InquiryErrors>({});
-  const [status, setStatus] = useState<"idle" | "preparing" | "ready">("idle");
+  const [status, setStatus] = useState<"idle" | "submitting" | "ready" | "success" | "error">("idle");
+  const [inquiryId, setInquiryId] = useState("");
   const clearError = (name: keyof InquiryErrors) => setErrors(current => current[name] ? { ...current, [name]: undefined } : current);
+  const defaultArea = productCode?.startsWith("CC-") ? "colorants" : productCode?.startsWith("AD-") ? "additives" : productCode === "CUSTOM" ? "custom" : productCode ? "printing-inks" : "";
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get("email") || "").trim();
@@ -41,6 +74,7 @@ export function InquiryForm({ compact = false, labels }: {
       if (!String(data.get("company") || "").trim()) next.company = labels.requiredError;
       if (!String(data.get("country") || "").trim()) next.country = labels.requiredError;
       if (!String(data.get("requirement") || "").trim()) next.requirement = labels.requirementError;
+      if (data.get("privacyAccepted") !== "on") next.privacyAccepted = labels.privacyError;
     }
     setErrors(next);
     const first = Object.keys(next)[0];
@@ -48,8 +82,35 @@ export function InquiryForm({ compact = false, labels }: {
       formRef.current?.querySelector<HTMLElement>(`[name="${first}"]`)?.focus();
       return;
     }
-    setStatus("preparing");
-    window.setTimeout(() => setStatus("ready"), 650);
+    if (compact) {
+      setStatus("ready");
+      return;
+    }
+    setStatus("submitting");
+    try {
+      const response = await fetch("/api/inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          area: data.get("area"),
+          company: data.get("company"),
+          country: data.get("country"),
+          requirement: data.get("requirement"),
+          privacyAccepted: data.get("privacyAccepted") === "on",
+          productCode,
+          locale,
+          website: data.get("website"),
+        }),
+      });
+      const result = await response.json() as { inquiryId?: string };
+      if (!response.ok || !result.inquiryId) throw new Error("delivery failed");
+      setInquiryId(result.inquiryId);
+      setStatus("success");
+      formRef.current?.reset();
+    } catch {
+      setStatus("error");
+    }
   };
 
   if (status === "ready") return <div className="inquiry-ready" role="status" aria-live="polite">
@@ -59,15 +120,24 @@ export function InquiryForm({ compact = false, labels }: {
     <button type="button" className="text-button" onClick={() => setStatus("idle")}>{labels.editDraft}</button>
   </div>;
 
+  if (status === "success") return <div className="inquiry-ready" role="status" aria-live="polite">
+    <span>{labels.successEyebrow}</span>
+    <h3>{labels.successTitle}</h3>
+    <p>{labels.successBody}</p>
+    <p className="inquiry-reference">{labels.reference}: <strong>{inquiryId}</strong></p>
+  </div>;
+
   const fieldError = (name: keyof InquiryErrors) => errors[name] ? <span className="field-error" id={`${name}-error`}>{errors[name]}</span> : null;
 
-  return <form ref={formRef} className="inquiry-form" noValidate onSubmit={submit} aria-label={labels.formLabel}>
+  return <form ref={formRef} className="inquiry-form" action="/api/inquiry" method="post" noValidate onSubmit={submit} aria-label={labels.formLabel}>
+    <input className="honeypot" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+    {productCode && <label className="full">{labels.productCode}<input name="productCode" value={productCode} readOnly /></label>}
     <label>{labels.email}
-      <input name="email" type="email" placeholder="name@company.com" onChange={() => clearError("email")} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} />
+      <input name="email" type="email" placeholder="name@company.com" required autoComplete="email" onChange={() => clearError("email")} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} />
       {fieldError("email")}
     </label>
     <label>{labels.area}
-      <select name="area" defaultValue="" onChange={() => clearError("area")} aria-invalid={Boolean(errors.area)} aria-describedby={errors.area ? "area-error" : undefined}>
+      <select name="area" defaultValue={defaultArea} required onChange={() => clearError("area")} aria-invalid={Boolean(errors.area)} aria-describedby={errors.area ? "area-error" : undefined}>
         <option value="" disabled>{labels.selectArea}</option>
         <option value="printing-inks">{labels.printingInks}</option>
         <option value="colorants">{labels.colorants}</option>
@@ -77,11 +147,13 @@ export function InquiryForm({ compact = false, labels }: {
       {fieldError("area")}
     </label>
     {!compact && <>
-      <label>{labels.company}<input name="company" placeholder={labels.companyPlaceholder} onChange={() => clearError("company")} aria-invalid={Boolean(errors.company)} aria-describedby={errors.company ? "company-error" : undefined} />{fieldError("company")}</label>
-      <label>{labels.country}<input name="country" placeholder={labels.countryPlaceholder} onChange={() => clearError("country")} aria-invalid={Boolean(errors.country)} aria-describedby={errors.country ? "country-error" : undefined} />{fieldError("country")}</label>
-      <label className="full">{labels.requirement}<textarea name="requirement" rows={4} placeholder={labels.requirementPlaceholder} onChange={() => clearError("requirement")} aria-invalid={Boolean(errors.requirement)} aria-describedby={errors.requirement ? "requirement-error" : undefined} />{fieldError("requirement")}</label>
+      <label>{labels.company}<input name="company" required autoComplete="organization" placeholder={labels.companyPlaceholder} onChange={() => clearError("company")} aria-invalid={Boolean(errors.company)} aria-describedby={errors.company ? "company-error" : undefined} />{fieldError("company")}</label>
+      <label>{labels.country}<input name="country" required autoComplete="country-name" placeholder={labels.countryPlaceholder} onChange={() => clearError("country")} aria-invalid={Boolean(errors.country)} aria-describedby={errors.country ? "country-error" : undefined} />{fieldError("country")}</label>
+      <label className="full">{labels.requirement}<textarea name="requirement" required maxLength={5000} rows={4} placeholder={labels.requirementPlaceholder} onChange={() => clearError("requirement")} aria-invalid={Boolean(errors.requirement)} aria-describedby={errors.requirement ? "requirement-error" : undefined} />{fieldError("requirement")}</label>
+      <label className="privacy-field full"><input name="privacyAccepted" type="checkbox" required onChange={() => clearError("privacyAccepted")} aria-invalid={Boolean(errors.privacyAccepted)} aria-describedby={errors.privacyAccepted ? "privacyAccepted-error" : undefined} /><span>{labels.privacyPrefix} <Link href={privacyHref}>{labels.privacyLink}</Link></span>{fieldError("privacyAccepted")}</label>
     </>}
-    <button type="submit" className="button" disabled={status === "preparing"}>{status === "preparing" ? labels.preparing : labels.prepare}<ArrowUpRight size={18} /></button>
+    {status === "error" && <div className="form-status form-status-error full" role="alert">{labels.deliveryError}</div>}
+    <button type="submit" className="button" disabled={status === "submitting"}>{status === "submitting" ? labels.preparing : labels.prepare}<ArrowUpRight size={18} /></button>
     <small>{labels.demoNote}</small>
   </form>;
 }

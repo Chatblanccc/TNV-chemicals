@@ -1,5 +1,5 @@
-import { SitePage } from "./site-page";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <SitePage route="/en" />;
+  redirect("/en");
 }
