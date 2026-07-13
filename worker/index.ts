@@ -444,10 +444,11 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
 async function validatePublishedDownloadRelationship(input: ContentInput, env: Env, recordId?: string): Promise<string | null> {
   if (input.status !== "published" || !input.data || typeof input.data.productSlug !== "string" || !input.data.productSlug) return null;
   const productSlug = input.data.productSlug;
-  if (!seedProductSlugs.has(productSlug)) {
-    const product = await env.DB.prepare("SELECT id FROM cms_products WHERE slug = ? AND status = 'published' AND verification_status = 'verified' LIMIT 1").bind(productSlug).first<{ id: string }>();
-    if (!product) return "Linked product must be published and verified before its document can be published";
-  }
+  const governedProduct = await env.DB.prepare("SELECT status, verification_status AS verificationStatus FROM cms_products WHERE slug = ? LIMIT 1").bind(productSlug).first<{ status: ContentStatus; verificationStatus: VerificationStatus }>();
+  const publicProduct = governedProduct
+    ? governedProduct.status === "published" && governedProduct.verificationStatus === "verified"
+    : seedProductSlugs.has(productSlug);
+  if (!publicProduct) return "Linked product must be published and verified before its document can be published";
   if (productDocumentTypes.has(input.type || "")) {
     const duplicate = await env.DB.prepare("SELECT id FROM downloads WHERE status = 'published' AND verification_status = 'verified' AND type = ? AND product_slug = ? AND locale = ? AND (? = '' OR id <> ?) LIMIT 1")
       .bind(input.type, productSlug, input.data.locale, recordId || "", recordId || "").first<{ id: string }>();
@@ -530,8 +531,9 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     if (error) return Response.json({ error }, { status: 400 });
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
     try {
-      const current = await env.DB.prepare(`SELECT status FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ status: ContentStatus }>();
+      const current = await env.DB.prepare(`SELECT slug, status FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ slug: string; status: ContentStatus }>();
       if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
+      if (current.slug !== input.slug) return Response.json({ error: "Published route slugs are immutable; create a new record and configure a redirect before changing a public URL" }, { status: 400 });
       if (type === "downloads") {
         const relationshipError = await validatePublishedDownloadRelationship(input, env, recordId);
         if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });

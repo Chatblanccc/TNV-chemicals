@@ -164,11 +164,16 @@ writes and publication decisions are recorded in `content_events`.
 
 Published CMS products, categories, applications, and articles merge into the
 seed catalog by slug, so existing public routes remain stable while verified
-content can progressively replace placeholders. A published category controls
-the localized category label used by its products. Published page-level SEO
-overrides are applied at render time, and the launch-gated sitemap includes
-published dynamic routes. Admin routes remain noindex and are excluded from
-sitemap discovery.
+content progressively replaces placeholders. A newly created draft does not
+withdraw its seed counterpart. Once a record has been published, unpublished,
+or archived, the CMS permanently owns that slug: a non-public state suppresses
+the seed fallback instead of accidentally restoring old content. Existing
+record slugs are immutable because changing a public URL requires a separately
+governed redirect. A published category controls the localized category label
+used by its products. Published page-level SEO overrides are applied at render
+time, and the launch-gated sitemap includes only currently published dynamic
+routes. Withdrawn dynamic routes return 404 with noindex behavior. Admin routes
+remain noindex and are excluded from sitemap discovery.
 
 Products support verified CAS number, formula, molecular weight, purity,
 appearance, descriptions, intended uses, applications, benefits, packaging,
@@ -192,7 +197,8 @@ structure without creating duplicate indexable pages.
 
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add
-a dynamic `/applications/{slug}` route without removing any existing route.
+a dynamic `/applications/{slug}` route; an explicit unpublish or archive keeps
+that route withdrawn instead of reviving its seed fallback.
 Application editors maintain an explicit list of related published product
 slugs. Public pages resolve only matching products; a missing, archived, or
 unpublished product remains hidden, and an empty verified relationship renders

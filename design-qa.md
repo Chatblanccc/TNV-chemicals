@@ -272,6 +272,33 @@ final result: passed
 - Browser logs contained no warnings or errors. Lint, direct TypeScript checking,
   production build, and all 28 rendered/API tests passed.
 
+## 2026-07-13 governed seed-content withdrawal
+
+- Product, category, application, and article seed fallbacks now follow CMS
+  lifecycle ownership. A first draft preserves the current seed page; after a
+  publish, unpublish, or archive event, a non-public governed row continues to
+  suppress that seed instead of reviving stale content.
+- Dynamic product, application, article, and knowledge-category routes were
+  removed from the static route allowlist. They are now admitted only from the
+  currently published content graph, so a withdrawn seed-backed product returns
+  a real 404 with `X-Robots-Tag: noindex` and cannot remain in dynamic sitemap
+  output.
+- Existing record slugs are read-only in the editor and rejected by the API if
+  changed. This preserves established URLs until a separate redirect workflow
+  is configured.
+- A local-only override of `water-based-flexographic-ink` verified the complete
+  lifecycle: the published CMS copy replaced the seed page; archiving removed
+  the product from its detail route, catalog, global-search product results, and
+  linked downloads; the detail request returned 404. The QA row and events were
+  deleted after verification, restoring the untouched seed page.
+- The content editor was checked at 1440, 1024, 768, 390, and 360 CSS pixels.
+  The slug lock and withdrawal explanation remained visible at every width,
+  `readOnly` remained true, and `scrollWidth == clientWidth` at all five sizes.
+- Automated coverage now verifies first-draft fallback, published override,
+  archive/unpublish suppression, archived-seed document rejection, and slug
+  immutability. Lint, TypeScript checking, production build, and all 29 tests
+  passed before final handoff.
+
 ## 2026-07-13 certificate validity governance
 
 - Certificate publication now requires a valid, non-future issue date. The API

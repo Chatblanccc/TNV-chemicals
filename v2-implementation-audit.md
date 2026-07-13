@@ -26,7 +26,9 @@ Status meanings:
   formula, molecular weight, purity, appearance, bilingual applications,
   benefits, packaging, MOQ, structured specifications, and document linkage.
 - Public routes preserve the existing `/products/{category}/{slug}` structure;
-  verified dynamic products can be added without removing seeded routes.
+  verified dynamic products can be added while seed routes remain available
+  until an operator explicitly publishes, unpublishes, or archives the matching
+  governed slug.
 - The PRD's `/products/{slug}` form is supported as a permanent shortcut to
   the category-qualified canonical URL, avoiding duplicate indexable pages.
 - Product metadata, locale-aware Product JSON-LD, breadcrumbs, inquiry handoff, application
@@ -36,6 +38,13 @@ Status meanings:
   technical table, participates in global search, and reaches Product JSON-LD.
 - Only `published + verified` CMS rows reach public output through
   `app/published-content.ts`.
+- A draft does not hide an existing seed page. After first publication or an
+  explicit archive, CMS lifecycle events keep the seed suppressed whenever the
+  governed row is not public. Withdrawn products leave catalogs, search,
+  document relationships, sitemap output, and their detail route, which returns
+  404 rather than a generic fallback page.
+- Slugs are immutable after record creation. Route changes require a new record
+  and a governed redirect, preventing untracked public URL loss.
 - Categories have independent bilingual copy, verification, publication,
   translation, and audit states; verified labels are applied to every product
   in that category without changing its public route.
@@ -58,7 +67,9 @@ must be approved by TNV before launch.
 - Application editors govern related product slugs. Verified application pages
   resolve only currently public product records and expose an honest inquiry
   handoff when no verified relationship has been published.
-- Existing application routes remain available through the seed fallback.
+- Existing application routes remain available through the seed fallback until
+  the matching CMS lifecycle explicitly takes ownership; archived or
+  unpublished governed applications do not silently reappear.
 
 ## 3. SEO content and Knowledge Center
 

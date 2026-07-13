@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mergeGovernedBySlug } from "../app/content-lifecycle.ts";
+import { routePaths } from "../app/site-data.ts";
 
 async function request(path = "/", init = {}, extraEnv = {}, origin = "http://localhost") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -55,6 +57,22 @@ function createR2Mock(initialBody = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 
     },
   };
 }
+
+test("keeps seeded content until CMS takes over and preserves withdrawal after archive", () => {
+  assert.equal(routePaths.some(path => path.startsWith("/products/") || path.startsWith("/applications/") || path.startsWith("/insights/") || path.startsWith("/knowledge/") ), false);
+  const seed = [{ slug: "seed-product", name: "Seed product" }];
+  const draftRow = { id: "product-1", slug: "seed-product", status: "draft", verificationStatus: "pending" };
+  assert.deepEqual(mergeGovernedBySlug(seed, [draftRow], [], [], "product"), seed);
+
+  const publishedOverride = { slug: "seed-product", name: "Published CMS product" };
+  assert.deepEqual(mergeGovernedBySlug(seed, [{ ...draftRow, status: "published", verificationStatus: "verified" }], [publishedOverride], [{ entityType: "product", entityId: "product-1", action: "published" }], "product"), [publishedOverride]);
+
+  const archived = mergeGovernedBySlug(seed, [{ ...draftRow, status: "archived", verificationStatus: "verified" }], [], [{ entityType: "product", entityId: "product-1", action: "archived" }], "product");
+  assert.deepEqual(archived, []);
+
+  const unpublished = mergeGovernedBySlug(seed, [{ ...draftRow, status: "review", verificationStatus: "verified" }], [], [{ entityType: "product", entityId: "product-1", action: "unpublished" }], "product");
+  assert.deepEqual(unpublished, []);
+});
 
 test("redirects the root URL to the canonical English locale", async () => {
   const response = await request("/");
@@ -380,13 +398,24 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(unknownProductDownload.status, 400);
   assert.deepEqual(await unknownProductDownload.json(), { error: "Linked product must be published and verified before its document can be published" });
 
-  const duplicateDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "duplicate-product-tds" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], { id: "existing-download" }).db });
+  const archivedSeedDb = createD1Mock([], sql => sql.includes("FROM cms_products") ? { status: "archived", verificationStatus: "verified" } : null);
+  const archivedSeedDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "archived-seed-product-tds" }) }, { ADMIN_EMAILS: "admin@example.com", DB: archivedSeedDb.db });
+  assert.equal(archivedSeedDownload.status, 400);
+  assert.deepEqual(await archivedSeedDownload.json(), { error: "Linked product must be published and verified before its document can be published" });
+
+  const duplicateDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "duplicate-product-tds" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], sql => sql.includes("FROM cms_products") ? null : { id: "existing-download" }).db });
   assert.equal(duplicateDownload.status, 400);
   assert.deepEqual(await duplicateDownload.json(), { error: "Archive the current product document before publishing a replacement for the same type and language" });
 
   const unsafeRelativeDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "unsafe-relative-tds", data: { ...download.data, fileUrl: "/privacy-policy" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
   assert.equal(unsafeRelativeDownload.status, 400);
   assert.deepEqual(await unsafeRelativeDownload.json(), { error: "A verified HTTPS or uploaded PDF URL is required before publication" });
+
+  const immutableSlugDb = createD1Mock([], { slug: product.slug, status: "published" });
+  const renamedProduct = await request("/api/admin/content/products/product-id", { method: "PATCH", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "renamed-product" }) }, { ADMIN_EMAILS: "admin@example.com", DB: immutableSlugDb.db });
+  assert.equal(renamedProduct.status, 400);
+  assert.deepEqual(await renamedProduct.json(), { error: "Published route slugs are immutable; create a new record and configure a redirect before changing a public URL" });
+  assert.equal(immutableSlugDb.executed.some(statement => statement.sql.includes("UPDATE cms_products")), false);
 
   const editorDb = createD1Mock([], { role: "editor", active: 1 });
   const editorPublish = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(product) }, { DB: editorDb.db });
