@@ -271,3 +271,25 @@ final result: passed
   state check before being archived, after which its route returned 404.
 - Browser logs contained no warnings or errors. Lint, direct TypeScript checking,
   production build, and all 28 rendered/API tests passed.
+
+## 2026-07-13 certificate validity governance
+
+- Certificate publication now requires a valid, non-future issue date. The API
+  rejects impossible calendar dates, expiry dates before issue dates, and
+  future issue dates.
+- Public certificate records render explicit current, expired, or
+  expiry-unspecified status copy. Expired records use a historical-file CTA and
+  distinct error styling; unspecified expiry uses warning styling.
+- Company-profile and About-page certificate claims now include current
+  certificates only. Expired and expiry-unspecified records remain available in
+  the certificate center without being presented as current credentials.
+- Browser checks on the certificate editor and public certificate center at
+  1440, 1024, 768, 390, and 360 CSS pixels confirmed the date controls and all
+  three public validity states remain visible with
+  `scrollWidth == clientWidth`.
+- Local-only current, expired, and expiry-unspecified fixtures verified public
+  status copy, historical CTA behavior, and current-only company claims. All
+  three fixtures were archived after QA, and browser logs contained no warnings
+  or errors.
+- Automated acceptance: lint passed, direct TypeScript checking passed,
+  production build passed, and all 28 rendered/API tests passed.

@@ -155,7 +155,7 @@ test("publishes a truthful company knowledge profile for GEO", async () => {
   assert.match(html, /COMPANY KNOWLEDGE PROFILE/i);
   assert.match(html, /Public brand name/i);
   assert.match(html, /facility and production evidence pending/i);
-  assert.match(html, /no verified certificates published/i);
+  assert.match(html, /no current verified certificates published/i);
   assert.match(html, /"@type":"Organization"/i);
   assert.doesNotMatch(html, /ISO 9001|Europe|Middle East|manufacturer since/i);
 });
@@ -331,6 +331,28 @@ test("enforces verification and RBAC across CMS content writes", async () => {
 
   const nonCanonicalProfile = await request("/api/admin/content/company-profiles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "another-company", status: "draft", verificationStatus: "pending", data: { legalNameEn: "Pending legal entity" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(nonCanonicalProfile.status, 400);
+
+  const certificateDb = createD1Mock();
+  const certificate = { slug: "verified-certificate", type: "ISO", status: "published", verificationStatus: "verified", data: { nameEn: "Verified certificate", fileUrl: "https://example.com/verified.pdf", issuedDate: "2026-01-01", expiresDate: "2027-01-01" } };
+  const validCertificate = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(certificate) }, { ADMIN_EMAILS: "admin@example.com", DB: certificateDb.db });
+  assert.equal(validCertificate.status, 201);
+  assert.ok(certificateDb.executed.some(statement => statement.sql.includes("INSERT INTO certificates")));
+
+  const missingIssueDate = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...certificate, slug: "missing-issue-date", data: { ...certificate.data, issuedDate: "" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(missingIssueDate.status, 400);
+  assert.deepEqual(await missingIssueDate.json(), { error: "A verified issue date is required before publishing a certificate" });
+
+  const invalidCertificateDate = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...certificate, slug: "invalid-certificate-date", data: { ...certificate.data, issuedDate: "2026-02-30" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidCertificateDate.status, 400);
+  assert.deepEqual(await invalidCertificateDate.json(), { error: "Certificate issue date must be a valid YYYY-MM-DD date" });
+
+  const reversedCertificateDates = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...certificate, slug: "reversed-certificate-dates", data: { ...certificate.data, issuedDate: "2026-01-02", expiresDate: "2026-01-01" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(reversedCertificateDates.status, 400);
+  assert.deepEqual(await reversedCertificateDates.json(), { error: "Certificate expiry date cannot be before its issue date" });
+
+  const futureCertificate = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...certificate, slug: "future-certificate", data: { ...certificate.data, issuedDate: "2999-01-01", expiresDate: "2999-12-31" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(futureCertificate.status, 400);
+  assert.deepEqual(await futureCertificate.json(), { error: "Certificate issue date cannot be in the future" });
 
   const unverified = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "pending-certificate", type: "ISO", status: "published", verificationStatus: "pending", data: { nameEn: "Pending certificate" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(unverified.status, 400);

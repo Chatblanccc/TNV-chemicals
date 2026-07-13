@@ -26,7 +26,7 @@ export type PublishedCompanyProfile = {
   address?: string; addressZh?: string; email?: string; phone?: string; websiteUrl?: string; verificationStatus: "verified";
 };
 
-export type PublishedCertificate = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; issuedDate?: string; expiresDate?: string };
+export type PublishedCertificate = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; issuedDate: string; expiresDate?: string; validity: "current" | "expired" | "unspecified" };
 export type PublishedDownload = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; productSlug?: string; locale?: string };
 export type PublishedSeo = { title: string; description: string; keywords: string[] };
 export type PublishedSiteContent = { products: PublishedProduct[]; categories: PublishedCategory[]; companyProfile: PublishedCompanyProfile | null; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
@@ -37,6 +37,12 @@ const stringValue = (value: unknown) => typeof value === "string" ? value : "";
 const stringArray = (value: unknown) => Array.isArray(value) ? value.filter(item => typeof item === "string") as string[] : [];
 const pairArray = (value: unknown) => Array.isArray(value) ? value.filter(item => Array.isArray(item) && item.length === 2 && item.every(part => typeof part === "string")) as string[][] : [];
 const paragraphs = (value: unknown) => stringValue(value).split(/\n\s*\n/).map(item => item.trim()).filter(Boolean);
+const isIsoDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+};
 
 function mergeBySlug<T extends { slug: string }>(seed: T[], overrides: T[]) {
   const merged = new Map(seed.map(item => [item.slug, item]));
@@ -121,7 +127,17 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       const cover = articleCoverMedia(data.coverMediaKey);
       return { slug: row.slug, category: row.category, categoryName: stringValue(en.categoryName) || stringValue(data.categoryNameEn) || titleCase(row.category), title: stringValue(en.title) || stringValue(data.titleEn), titleZh: stringValue(zh.title) || stringValue(data.titleZh), type: stringValue(en.type) || stringValue(data.typeEn) || "Technical article", typeZh: stringValue(zh.type) || stringValue(data.typeZh) || "技术文章", author: stringValue(en.author) || stringValue(data.authorEn), authorZh: stringValue(zh.author) || stringValue(data.authorZh), published: stringValue(data.publishDate) || (row.publishedAt ? new Date(row.publishedAt).toISOString().slice(0, 10) : undefined), coverMediaKey: cover ? data.coverMediaKey as ArticleCoverMediaKey : undefined, updated: new Date(row.updatedAt).toISOString().slice(0, 10), readingMinutes: Math.max(1, Math.ceil(bodyEn.join(" ").split(/\s+/).filter(Boolean).length / 180)), summary: stringValue(en.summary) || stringValue(data.summaryEn), summaryZh: stringValue(zh.summary) || stringValue(data.summaryZh), relatedProductSlugs: stringArray(data.relatedProducts), relatedApplicationSlugs: stringArray(data.relatedApplications), sections: [{ heading: stringValue(en.sectionHeading) || stringValue(data.sectionHeadingEn) || "Overview", headingZh: stringValue(zh.sectionHeading) || stringValue(data.sectionHeadingZh) || "概览", paragraphs: bodyEn, paragraphsZh: bodyZh }], checklist: stringArray(en.checklist).length ? stringArray(en.checklist) : stringArray(data.checklist), checklistZh: stringArray(zh.checklist).length ? stringArray(zh.checklist) : stringArray(data.checklistZh), faq: pairArray(en.faq).length ? pairArray(en.faq) : pairArray(data.faq), faqZh: pairArray(zh.faq).length ? pairArray(zh.faq) : pairArray(data.faqZh) };
     });
-    const publishedCertificates: PublishedCertificate[] = certificateRows.map(row => { const data = objectValue(row.dataJson); const en = translation("certificate", row.id, "en"); const zh = translation("certificate", row.id, "zh"); return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), issuedDate: stringValue(data.issuedDate), expiresDate: stringValue(data.expiresDate) }; }).filter(item => item.name && item.fileUrl);
+    const today = new Date().toISOString().slice(0, 10);
+    const publishedCertificates: PublishedCertificate[] = certificateRows.map(row => {
+      const data = objectValue(row.dataJson);
+      const en = translation("certificate", row.id, "en");
+      const zh = translation("certificate", row.id, "zh");
+      const issuedDate = stringValue(data.issuedDate);
+      const expiresDate = stringValue(data.expiresDate);
+      const validExpiry = isIsoDate(expiresDate);
+      const validity: PublishedCertificate["validity"] = !validExpiry ? "unspecified" : expiresDate < today ? "expired" : "current";
+      return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), issuedDate, expiresDate: expiresDate || undefined, validity };
+    }).filter(item => item.name && item.fileUrl && item.issuedDate);
     const publishedDownloads: PublishedDownload[] = downloadRows.map(row => { const data = objectValue(row.dataJson); const en = translation("download", row.id, "en"); const zh = translation("download", row.id, "zh"); return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), productSlug: stringValue(data.productSlug), locale: stringValue(data.locale) }; }).filter(item => item.name && item.fileUrl);
     const publishedCategories = mergeBySlug(seededCategories, categoryOverrides);
     const categoryMap = new Map(publishedCategories.map(category => [category.slug, category]));

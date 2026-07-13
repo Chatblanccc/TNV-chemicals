@@ -383,6 +383,13 @@ function isSafeFileUrl(value: unknown): value is string {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
 
+function isIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 function parseStoredJson(value: unknown): Record<string, unknown> {
   if (typeof value !== "string") return {};
   try { const parsed = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch { return {}; }
@@ -411,7 +418,12 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
   if (type === "articles" && typeof input.data.publishDate === "string" && input.data.publishDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.data.publishDate)) return "Publication date must use YYYY-MM-DD";
   if (type === "articles" && typeof input.data.coverMediaKey === "string" && input.data.coverMediaKey && !articleCoverMediaKeys.includes(input.data.coverMediaKey as typeof articleCoverMediaKeys[number])) return "Article cover must reference a registered media key";
-  if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string")) return "Certificate type and English name are required";
+  if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string" || !input.data.nameEn.trim())) return "Certificate type and English name are required";
+  if (type === "certificates" && input.data.issuedDate !== undefined && input.data.issuedDate !== "" && !isIsoDate(input.data.issuedDate)) return "Certificate issue date must be a valid YYYY-MM-DD date";
+  if (type === "certificates" && input.data.expiresDate !== undefined && input.data.expiresDate !== "" && !isIsoDate(input.data.expiresDate)) return "Certificate expiry date must be a valid YYYY-MM-DD date";
+  if (type === "certificates" && input.data.issuedDate && input.data.expiresDate && String(input.data.expiresDate) < String(input.data.issuedDate)) return "Certificate expiry date cannot be before its issue date";
+  if (type === "certificates" && input.status === "published" && !isIsoDate(input.data.issuedDate)) return "A verified issue date is required before publishing a certificate";
+  if (type === "certificates" && input.status === "published" && String(input.data.issuedDate) > new Date().toISOString().slice(0, 10)) return "Certificate issue date cannot be in the future";
   if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string")) return "Download type and English name are required";
   if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeFileUrl(input.data.fileUrl)) return "A verified HTTPS or site-relative file URL is required before publication";
   return null;

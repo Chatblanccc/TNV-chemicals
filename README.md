@@ -151,7 +151,11 @@ technical files from leaking into the buyer experience. Certificate and
 download records also require an HTTPS or site-relative file URL before they can
 be published. Their editor can upload PDF files (20 MB maximum) to the bound R2
 bucket and automatically reuse the generated site-relative URL; upload alone
-never publishes or exposes the object.
+never publishes or exposes the object. Published certificates additionally
+require a valid, non-future issue date. An optional expiry date cannot precede
+the issue date. The public certificate center distinguishes current, expired,
+and expiry-unspecified records; company-profile and About-page certificate
+claims include current records only.
 
 Apply every Drizzle migration in `drizzle/` to the bound D1 database before
 using the administration workspace. Bootstrap administrators come from

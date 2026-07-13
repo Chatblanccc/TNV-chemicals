@@ -292,6 +292,11 @@ th { width: 38%; color: var(--muted); font-weight: 650; }
 .library-grid > div, .library-grid > a { min-height: 240px; padding: 28px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--white); }
 .library-grid h2 { margin: 50px 0 20px; font-family: var(--font-editorial), serif; font-size: 28px; font-weight: 520; }
 .library-grid > a > b { display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; font-size: 12px; }
+.library-grid .resource-status { display: block; margin-top: 14px; color: var(--success); font-size: 10px; font-weight: 750; line-height: 1.6; }
+.library-grid .certificate-expired { border-top: 3px solid var(--error); }
+.library-grid .certificate-expired .resource-status { color: var(--error); }
+.library-grid .certificate-unspecified { border-top: 3px solid var(--warning); }
+.library-grid .certificate-unspecified .resource-status { color: var(--warning); }
 .fact-sheet { border-top: 1px solid var(--line); }
 .fact-sheet p { margin: 0; padding: 18px 0; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
 .article-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }

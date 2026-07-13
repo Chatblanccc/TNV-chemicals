@@ -126,8 +126,14 @@ with the actual company owner before launch.
 - Uploaded objects are served only when a referencing certificate/download is
   simultaneously `published + verified`; draft uploads cannot be fetched from
   the public document route.
-- With no verified company certificate, the public center shows a truthful empty
-  state instead of a fabricated badge.
+- Publication requires a valid, non-future issue date; invalid calendar dates,
+  reversed issue/expiry ranges, and future issue dates are rejected.
+- The public center labels current, expired, and expiry-unspecified records.
+  Expired records remain available as clearly labelled historical evidence,
+  while company-profile and About-page claims include current certificates
+  only.
+- With no verified company certificate, the public center shows a truthful
+  empty state instead of a fabricated badge.
 
 ## 7. Download center
 
