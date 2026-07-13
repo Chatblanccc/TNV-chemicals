@@ -7,6 +7,9 @@ interface Env {
   INQUIRY_WEBHOOK_URL?: string;
   INQUIRY_WEBHOOK_TOKEN?: string;
   ADMIN_EMAILS?: string;
+  ANALYTICS_ENABLED?: string;
+  AI_ASSISTANT_ENDPOINT?: string;
+  AI_ASSISTANT_TOKEN?: string;
   SITE_LAUNCH_READY?: string;
   DB: D1Database;
   IMAGES: {
@@ -28,13 +31,13 @@ function storageError(error: unknown): Response {
 }
 
 type AdminRole = "admin" | "marketing" | "sales" | "editor";
-type AdminPermission = "inquiries:read" | "inquiries:write" | "content:read" | "content:write" | "content:publish" | "users:manage";
+type AdminPermission = "inquiries:read" | "inquiries:write" | "content:read" | "content:write" | "content:publish" | "analytics:read" | "users:manage";
 type AdminSession = { email: string; role: AdminRole };
 
 const rolePermissions: Record<AdminRole, ReadonlySet<AdminPermission>> = {
-  admin: new Set(["inquiries:read", "inquiries:write", "content:read", "content:write", "content:publish", "users:manage"]),
-  marketing: new Set(["inquiries:read", "content:read", "content:write", "content:publish"]),
-  sales: new Set(["inquiries:read", "inquiries:write", "content:read"]),
+  admin: new Set(["inquiries:read", "inquiries:write", "content:read", "content:write", "content:publish", "analytics:read", "users:manage"]),
+  marketing: new Set(["inquiries:read", "content:read", "content:write", "content:publish", "analytics:read"]),
+  sales: new Set(["inquiries:read", "inquiries:write", "content:read", "analytics:read"]),
   editor: new Set(["content:read", "content:write"]),
 };
 
@@ -56,23 +59,23 @@ async function requireAdmin(request: Request, env: Env, permission: AdminPermiss
   return { email, role };
 }
 
-const securityPolicy = [
+const securityPolicy = (analyticsEnabled: boolean) => [
   "default-src 'self'",
   "base-uri 'self'",
-  "connect-src 'self'",
+  `connect-src 'self'${analyticsEnabled ? " https://www.google-analytics.com https://region1.google-analytics.com" : ""}`,
   "font-src 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
   "img-src 'self' data:",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src 'self' 'unsafe-inline'${analyticsEnabled ? " https://www.googletagmanager.com" : ""}`,
   "style-src 'self' 'unsafe-inline'",
 ].join("; ");
 
 function withResponseHeaders(response: Response, request: Request, env: Env): Response {
   const url = new URL(request.url);
   const headers = new Headers(response.headers);
-  headers.set("Content-Security-Policy", securityPolicy);
+  headers.set("Content-Security-Policy", securityPolicy(env.ANALYTICS_ENABLED === "true"));
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("X-Content-Type-Options", "nosniff");
@@ -84,6 +87,8 @@ function withResponseHeaders(response: Response, request: Request, env: Env): Re
   if (url.pathname.endsWith(".webp")) headers.set("Content-Type", "image/webp");
   if (/^\/assets\/.*-[\w-]+\.(?:css|js)$/.test(url.pathname) || url.pathname.startsWith("/fonts/")) {
     headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  } else if (url.pathname.startsWith("/images/") || url.pathname === "/og.jpg" || url.pathname === "/favicon.svg") {
+    headers.set("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000");
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -131,6 +136,15 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
     return storageError(error);
   }
 
+  if (env.ANALYTICS_ENABLED === "true") {
+    try {
+      await env.DB.prepare("INSERT INTO analytics_events (id, event_type, path, locale, country, query, product_code, referrer_host, created_at) VALUES (?, 'inquiry_submitted', ?, ?, ?, NULL, ?, NULL, ?)")
+        .bind(crypto.randomUUID(), text("sourcePath") || "/request-quote", text("locale") === "zh" ? "zh" : "en", requestCountry(request), text("productCode") || null, timestamp).run();
+    } catch {
+      // Conversion reporting is optional and must never invalidate a stored inquiry.
+    }
+  }
+
   if (env.INQUIRY_WEBHOOK_URL) {
     let notification: "sent" | "failed" = "failed";
     try {
@@ -156,6 +170,81 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
     }
   }
   return Response.json({ ok: true, inquiryId, notificationStatus: finalNotificationStatus }, { status: 201 });
+}
+
+const analyticsEventTypes = ["page_view", "search", "product_view", "document_download", "inquiry_submitted"] as const;
+const analyticsLocales = ["en", "zh", "es", "ar", "ru"] as const;
+
+function shortText(value: unknown, limit: number) {
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
+}
+
+function requestCountry(request: Request) {
+  const cloudflareCountry = (request as Request & { cf?: { country?: string } }).cf?.country;
+  const value = request.headers.get("cf-ipcountry") || cloudflareCountry || "";
+  return /^[A-Z]{2}$/.test(value) ? value : null;
+}
+
+async function handleAnalyticsEvent(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
+  if (env.ANALYTICS_ENABLED !== "true") return new Response(null, { status: 204 });
+  if (!env.DB) return Response.json({ error: "Analytics storage is not configured" }, { status: 503 });
+  const origin = request.headers.get("origin");
+  if (origin && new URL(origin).host !== new URL(request.url).host) return Response.json({ error: "Cross-origin analytics are not accepted" }, { status: 403 });
+  let input: Record<string, unknown>;
+  try { input = await request.json() as Record<string, unknown>; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const eventType = shortText(input.eventType, 40);
+  const locale = shortText(input.locale, 5);
+  const path = shortText(input.path, 500);
+  if (!analyticsEventTypes.includes(eventType as typeof analyticsEventTypes[number]) || !analyticsLocales.includes(locale as typeof analyticsLocales[number]) || !path.startsWith("/") || path.startsWith("//")) return Response.json({ error: "Invalid analytics event" }, { status: 400 });
+  let referrerHost: string | null = null;
+  const referrer = shortText(input.referrer, 500);
+  if (referrer) { try { referrerHost = new URL(referrer).host.slice(0, 255); } catch { referrerHost = null; } }
+  try {
+    await env.DB.prepare("INSERT INTO analytics_events (id, event_type, path, locale, country, query, product_code, referrer_host, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(crypto.randomUUID(), eventType, path, locale, requestCountry(request), shortText(input.query, 200) || null, shortText(input.productCode, 120) || null, referrerHost, Date.now()).run();
+    return new Response(null, { status: 204 });
+  } catch (error) { return storageError(error); }
+}
+
+async function handleAdminAnalytics(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env, "analytics:read");
+  if (admin instanceof Response) return admin;
+  if (request.method !== "GET") return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "GET" } });
+  if (!env.DB) return Response.json({ error: "Analytics storage is not configured" }, { status: 503 });
+  const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  try {
+    const [totals, countries, paths, searches, products] = await Promise.all([
+      env.DB.prepare("SELECT event_type AS eventType, COUNT(*) AS count FROM analytics_events WHERE created_at >= ? GROUP BY event_type ORDER BY count DESC").bind(since).all(),
+      env.DB.prepare("SELECT COALESCE(country, 'Unknown') AS label, COUNT(*) AS count FROM analytics_events WHERE created_at >= ? GROUP BY country ORDER BY count DESC LIMIT 12").bind(since).all(),
+      env.DB.prepare("SELECT path AS label, COUNT(*) AS count FROM analytics_events WHERE created_at >= ? AND event_type = 'page_view' GROUP BY path ORDER BY count DESC LIMIT 12").bind(since).all(),
+      env.DB.prepare("SELECT query AS label, COUNT(*) AS count FROM analytics_events WHERE created_at >= ? AND event_type = 'search' AND query IS NOT NULL GROUP BY query ORDER BY count DESC LIMIT 12").bind(since).all(),
+      env.DB.prepare("SELECT product_code AS label, COUNT(*) AS count FROM analytics_events WHERE created_at >= ? AND product_code IS NOT NULL GROUP BY product_code ORDER BY count DESC LIMIT 12").bind(since).all(),
+    ]);
+    return Response.json({ enabled: env.ANALYTICS_ENABLED === "true", periodDays: 30, totals: totals.results, countries: countries.results, paths: paths.results, searches: searches.results, products: products.results });
+  } catch (error) { return storageError(error); }
+}
+
+async function handleAssistant(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
+  let input: Record<string, unknown>;
+  try { input = await request.json() as Record<string, unknown>; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const requirement = shortText(input.requirement, 2000);
+  const locale = shortText(input.locale, 5);
+  if (requirement.length < 20 || !analyticsLocales.includes(locale as typeof analyticsLocales[number])) return Response.json({ error: "A sufficiently detailed requirement and supported locale are required" }, { status: 400 });
+  if (!env.AI_ASSISTANT_ENDPOINT) return Response.json({ configured: false, status: "not_connected", message: "The recommendation service is reserved but not connected. Use the technical inquiry workflow for a reviewed response." }, { status: 503 });
+  try {
+    const endpoint = new URL(env.AI_ASSISTANT_ENDPOINT);
+    if (endpoint.protocol !== "https:") throw new Error("Assistant endpoint must use HTTPS");
+    const upstream = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", ...(env.AI_ASSISTANT_TOKEN ? { Authorization: `Bearer ${env.AI_ASSISTANT_TOKEN}` } : {}) }, body: JSON.stringify({ requirement, locale, context: shortText(input.context, 500) || undefined }) });
+    if (!upstream.ok) throw new Error("Assistant service unavailable");
+    const result = await upstream.json() as { summary?: unknown; productSlugs?: unknown; questions?: unknown };
+    const summary = shortText(result.summary, 2000);
+    const productSlugs = Array.isArray(result.productSlugs) ? result.productSlugs.filter(value => typeof value === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)).slice(0, 6) : [];
+    const questions = Array.isArray(result.questions) ? result.questions.filter(value => typeof value === "string").map(value => value.slice(0, 300)).slice(0, 6) : [];
+    if (!summary) throw new Error("Invalid assistant response");
+    return Response.json({ configured: true, status: "review_required", summary, productSlugs, questions });
+  } catch { return Response.json({ configured: true, status: "temporarily_unavailable", message: "The recommendation service could not respond. Submit a technical inquiry for human review." }, { status: 502 }); }
 }
 
 async function handleAdminInquiries(request: Request, env: Env): Promise<Response> {
@@ -197,7 +286,7 @@ async function handleAdminInquiries(request: Request, env: Env): Promise<Respons
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: match ? "PATCH" : "GET" } });
 }
 
-const contentTypes = ["products", "articles", "certificates", "downloads"] as const;
+const contentTypes = ["products", "applications", "articles", "certificates", "downloads"] as const;
 type ContentType = typeof contentTypes[number];
 type ContentStatus = "draft" | "review" | "published" | "archived";
 type VerificationStatus = "pending" | "verified" | "rejected";
@@ -211,8 +300,9 @@ type ContentInput = {
   data?: Record<string, unknown>;
 };
 
-const contentConfig: Record<ContentType, { table: string; entity: "product" | "article" | "certificate" | "download" }> = {
+const contentConfig: Record<ContentType, { table: string; entity: "product" | "application" | "article" | "certificate" | "download" }> = {
   products: { table: "cms_products", entity: "product" },
+  applications: { table: "cms_applications", entity: "application" },
   articles: { table: "cms_articles", entity: "article" },
   certificates: { table: "certificates", entity: "certificate" },
   downloads: { table: "downloads", entity: "download" },
@@ -220,6 +310,7 @@ const contentConfig: Record<ContentType, { table: string; entity: "product" | "a
 const contentStatuses: ContentStatus[] = ["draft", "review", "published", "archived"];
 const verificationStatuses: VerificationStatus[] = ["pending", "verified", "rejected"];
 const downloadTypes = ["sds", "tds", "coa", "catalog", "certificate", "other"];
+const contentLocales = ["en", "zh", "es", "ar", "ru"] as const;
 
 function isSafeFileUrl(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
@@ -243,6 +334,8 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) return "Content data is required";
   if (input.status === "published" && input.verificationStatus !== "verified") return "Only verified content can be published";
   if (type === "products" && (!input.code?.trim() || !input.category?.trim() || typeof input.data.nameEn !== "string" || typeof input.data.useEn !== "string")) return "Product code, category, English name and use are required";
+  if (type === "products" && typeof input.data.casNumber === "string" && input.data.casNumber && !/^[0-9]{2,7}-[0-9]{2}-[0-9]$/.test(input.data.casNumber)) return "CAS number must use the standard hyphenated format";
+  if (type === "applications" && (typeof input.data.nameEn !== "string" || typeof input.data.introEn !== "string")) return "Application English name and introduction are required";
   if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
   if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string")) return "Certificate type and English name are required";
   if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string")) return "Download type and English name are required";
@@ -271,7 +364,7 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
   if (request.method === "GET" && !recordId) {
     const status = url.searchParams.get("status") || "";
     if (status && !contentStatuses.includes(status as ContentStatus)) return Response.json({ error: "Invalid content status" }, { status: 400 });
-    const extra = type === "products" ? ", code, category" : type === "articles" ? ", category" : ", type";
+    const extra = type === "products" ? ", code, category" : type === "articles" ? ", category" : type === "applications" ? "" : ", type";
     try {
       const result = await env.DB.prepare(`SELECT id, slug, status, verification_status AS verificationStatus, data_json AS dataJson, updated_by AS updatedBy, published_at AS publishedAt, created_at AS createdAt, updated_at AS updatedAt${extra} FROM ${config.table} WHERE (? = '' OR status = ?) ORDER BY updated_at DESC LIMIT 200`).bind(status, status).all<Record<string, unknown>>();
       return Response.json({ type, records: normalizeContentRows(result.results) });
@@ -291,11 +384,13 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     const eventAction = input.status === "published" ? "published" : "created";
     const insert = type === "products"
       ? env.DB.prepare("INSERT INTO cms_products (id, slug, code, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
-      : type === "articles"
-        ? env.DB.prepare("INSERT INTO cms_articles (id, slug, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
-        : type === "certificates"
-          ? env.DB.prepare("INSERT INTO certificates (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
-          : env.DB.prepare("INSERT INTO downloads (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now);
+      : type === "applications"
+        ? env.DB.prepare("INSERT INTO cms_applications (id, slug, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+        : type === "articles"
+          ? env.DB.prepare("INSERT INTO cms_articles (id, slug, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+          : type === "certificates"
+            ? env.DB.prepare("INSERT INTO certificates (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+            : env.DB.prepare("INSERT INTO downloads (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now);
     try {
       await env.DB.batch([insert, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, id, eventAction, admin.email, now)]);
       return Response.json({ ok: true, id, status: input.status }, { status: 201 });
@@ -316,11 +411,13 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
       const dataJson = JSON.stringify(input.data);
       const update = type === "products"
         ? env.DB.prepare("UPDATE cms_products SET slug = ?, code = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
-        : type === "articles"
-          ? env.DB.prepare("UPDATE cms_articles SET slug = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
-          : type === "certificates"
-            ? env.DB.prepare("UPDATE certificates SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
-            : env.DB.prepare("UPDATE downloads SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId);
+        : type === "applications"
+          ? env.DB.prepare("UPDATE cms_applications SET slug = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+          : type === "articles"
+            ? env.DB.prepare("UPDATE cms_articles SET slug = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+            : type === "certificates"
+              ? env.DB.prepare("UPDATE certificates SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+              : env.DB.prepare("UPDATE downloads SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId);
       const action = input.status === "published" && current.status !== "published" ? "published" : input.status === "archived" ? "archived" : current.status === "published" && input.status !== "published" ? "unpublished" : "updated";
       await env.DB.batch([update, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, recordId, action, admin.email, now)]);
       return Response.json({ ok: true, id: recordId, status: input.status });
@@ -343,11 +440,55 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH, DELETE" : "GET, POST" } });
 }
 
-type SeoInput = { path?: string; locale?: "en" | "zh"; status?: "draft" | "published"; title?: string; description?: string; keywords?: string[] };
+type TranslationInput = { entityType?: "product" | "application" | "article" | "certificate" | "download"; entityId?: string; locale?: typeof contentLocales[number]; status?: ContentStatus; verificationStatus?: VerificationStatus; data?: Record<string, unknown> };
+
+async function handleAdminTranslations(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/api\/admin\/translations\/([^/]+)$/);
+  const recordId = match?.[1];
+  const admin = await requireAdmin(request, env, request.method === "GET" ? "content:read" : "content:write");
+  if (admin instanceof Response) return admin;
+  if (!env.DB) return Response.json({ error: "Content storage is not configured" }, { status: 503 });
+  if (request.method === "GET" && !recordId) {
+    const entityType = url.searchParams.get("entityType") || "";
+    const entityId = url.searchParams.get("entityId") || "";
+    if (entityType && !["product", "application", "article", "certificate", "download"].includes(entityType)) return Response.json({ error: "Invalid entity type" }, { status: 400 });
+    try {
+      const result = await env.DB.prepare("SELECT id, entity_type AS entityType, entity_id AS entityId, locale, status, verification_status AS verificationStatus, data_json AS dataJson, updated_by AS updatedBy, published_at AS publishedAt, updated_at AS updatedAt FROM content_translations WHERE (? = '' OR entity_type = ?) AND (? = '' OR entity_id = ?) ORDER BY entity_type, entity_id, locale").bind(entityType, entityType, entityId, entityId).all<Record<string, unknown>>();
+      return Response.json({ records: normalizeContentRows(result.results) });
+    } catch (error) { return storageError(error); }
+  }
+  if ((request.method === "POST" && !recordId) || (request.method === "PATCH" && recordId)) {
+    let input: TranslationInput;
+    try { input = await request.json() as TranslationInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    if (!input.entityType || !["product", "application", "article", "certificate", "download"].includes(input.entityType) || !input.entityId || !input.locale || !contentLocales.includes(input.locale) || !input.status || !contentStatuses.includes(input.status) || !input.verificationStatus || !verificationStatuses.includes(input.verificationStatus) || !input.data || Array.isArray(input.data)) return Response.json({ error: "A valid entity, locale, state and translation payload are required" }, { status: 400 });
+    if (input.status === "published" && input.verificationStatus !== "verified") return Response.json({ error: "Only verified translations can be published" }, { status: 400 });
+    if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    const entityConfig = Object.values(contentConfig).find(config => config.entity === input.entityType)!;
+    try {
+      const parent = await env.DB.prepare(`SELECT id FROM ${entityConfig.table} WHERE id = ?`).bind(input.entityId).first();
+      if (!parent) return Response.json({ error: "Parent content not found" }, { status: 404 });
+      if (recordId) {
+        const existing = await env.DB.prepare("SELECT id FROM content_translations WHERE id = ?").bind(recordId).first();
+        if (!existing) return Response.json({ error: "Translation not found" }, { status: 404 });
+      }
+      const id = recordId || crypto.randomUUID();
+      const now = Date.now();
+      const statement = recordId
+        ? env.DB.prepare("UPDATE content_translations SET entity_type = ?, entity_id = ?, locale = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.entityType, input.entityId, input.locale, input.status, input.verificationStatus, JSON.stringify(input.data), admin.email, input.status === "published" ? now : null, now, id)
+        : env.DB.prepare("INSERT INTO content_translations (id, entity_type, entity_id, locale, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.entityType, input.entityId, input.locale, input.status, input.verificationStatus, JSON.stringify(input.data), admin.email, input.status === "published" ? now : null, now, now);
+      await env.DB.batch([statement, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), input.entityType, id, input.status === "published" ? "published" : recordId ? "updated" : "created", admin.email, now)]);
+      return Response.json({ ok: true, id, locale: input.locale, status: input.status }, { status: recordId ? 200 : 201 });
+    } catch (error) { return contentWriteError(error); }
+  }
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH" : "GET, POST" } });
+}
+
+type SeoInput = { path?: string; locale?: typeof contentLocales[number]; status?: "draft" | "published"; title?: string; description?: string; keywords?: string[] };
 
 function validateSeoInput(input: SeoInput): string | null {
-  if (!input.path?.startsWith("/") || input.path.startsWith("//") || input.path.startsWith("/admin/")) return "A public site path is required";
-  if (!input.locale || !["en", "zh"].includes(input.locale)) return "A supported locale is required";
+  if (!input.path?.startsWith("/") || input.path.startsWith("//") || input.path === "/admin" || input.path.startsWith("/admin/")) return "A public site path is required";
+  if (!input.locale || !contentLocales.includes(input.locale)) return "A supported locale is required";
   if (!input.status || !["draft", "published"].includes(input.status)) return "Invalid SEO status";
   if (!input.title?.trim() || input.title.trim().length > 160) return "SEO title must be 1 to 160 characters";
   if (!input.description?.trim() || input.description.trim().length > 320) return "SEO description must be 1 to 320 characters";
@@ -444,8 +585,12 @@ const worker = {
 
     if (url.pathname === "/favicon.ico") return Response.redirect(new URL("/favicon.svg", request.url), 308);
     if (url.pathname === "/api/inquiry") return withResponseHeaders(await handleInquiry(request, env), request, env);
+    if (url.pathname === "/api/analytics") return withResponseHeaders(await handleAnalyticsEvent(request, env), request, env);
+    if (url.pathname === "/api/assistant/recommend") return withResponseHeaders(await handleAssistant(request, env), request, env);
     if (url.pathname === "/api/admin/inquiries" || url.pathname.startsWith("/api/admin/inquiries/")) return withResponseHeaders(await handleAdminInquiries(request, env), request, env);
+    if (url.pathname === "/api/admin/analytics") return withResponseHeaders(await handleAdminAnalytics(request, env), request, env);
     if (url.pathname.startsWith("/api/admin/content/")) return withResponseHeaders(await handleAdminContent(request, env), request, env);
+    if (url.pathname === "/api/admin/translations" || url.pathname.startsWith("/api/admin/translations/")) return withResponseHeaders(await handleAdminTranslations(request, env), request, env);
     if (url.pathname === "/api/admin/seo" || url.pathname.startsWith("/api/admin/seo/")) return withResponseHeaders(await handleAdminSeo(request, env), request, env);
     if (url.pathname === "/api/admin/users" || url.pathname.startsWith("/api/admin/users/")) return withResponseHeaders(await handleAdminUsers(request, env), request, env);
 

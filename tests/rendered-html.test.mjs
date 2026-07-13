@@ -19,7 +19,8 @@ function createD1Mock(results = [], firstResult = { status: "new" }) {
       sql,
       args,
       async run() { executed.push({ sql, args }); return { success: true }; },
-      async all() { executed.push({ sql, args }); return { results }; },
+      async all() { executed.push({ sql, args }); return { results: typeof results === "function" ? results(sql, args) : results }; },
+      async raw() { executed.push({ sql, args }); const rows = typeof results === "function" ? results(sql, args) : results; return rows.map(row => Array.isArray(row) ? row : Object.values(row)); },
       async first() { executed.push({ sql, args }); return typeof firstResult === "function" ? firstResult(sql, args) : firstResult; },
     }),
   });
@@ -79,6 +80,52 @@ test("renders the searchable product catalog without inventing technical values"
   assert.match(html, /Search product name, series code or application/i);
   assert.match(html, /Technical data pending verification/i);
   assert.doesNotMatch(html, /CAS No\.|Purity:|ISO 9001/i);
+});
+
+test("searches products, applications and knowledge from one public route", async () => {
+  const productResponse = await request("/en/search?q=WB-FX%20Series");
+  assert.equal(productResponse.status, 200);
+  const productHtml = await productResponse.text();
+  assert.match(productHtml, /GLOBAL SEARCH/i);
+  assert.match(productHtml, /Water-Based Flexographic Ink/i);
+  assert.match(productHtml, /Product[\s\S]*WB-FX Series/i);
+  assert.match(productHtml, /name="q"/i);
+
+  const applicationResponse = await request("/zh/search?q=标签");
+  assert.equal(applicationResponse.status, 200);
+  const applicationHtml = await applicationResponse.text();
+  assert.match(applicationHtml, /全站搜索/i);
+  assert.match(applicationHtml, /标签与特种印刷/i);
+  assert.match(applicationHtml, /应用路径/i);
+
+  const knowledgeResponse = await request("/en/search?q=batch-specific%20results");
+  assert.equal(knowledgeResponse.status, 200);
+  assert.match(await knowledgeResponse.text(), /TDS, SDS and COA: What Industrial Buyers Need/i);
+});
+
+test("renders an honest assistant boundary and carries its brief into inquiry", async () => {
+  const assistant = await request("/en/assistant");
+  assert.equal(assistant.status, 200);
+  const html = await assistant.text();
+  assert.match(html, /SELECTION ASSISTANT/i);
+  assert.match(html, /No invented product parameters/i);
+  assert.match(html, /human verification/i);
+
+  const inquiry = await request("/en/request-quote?brief=Water-based%20ink%20for%20corrugated%20board");
+  assert.equal(inquiry.status, 200);
+  assert.match(await inquiry.text(), /Water-based ink for corrugated board/i);
+});
+
+test("publishes a truthful company knowledge profile for GEO", async () => {
+  const response = await request("/en/company-profile", {}, { SITE_URL: "https://example.com" });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /COMPANY KNOWLEDGE PROFILE/i);
+  assert.match(html, /Public brand name/i);
+  assert.match(html, /facility and production evidence pending/i);
+  assert.match(html, /no verified certificates published/i);
+  assert.match(html, /"@type":"Organization"/i);
+  assert.doesNotMatch(html, /ISO 9001|Europe|Middle East|manufacturer since/i);
 });
 
 test("adds qualification context and truthful structured product properties", async () => {
@@ -175,12 +222,23 @@ test("renders the inquiry workspace as a private, non-indexable route", async ()
 });
 
 test("enforces verification and RBAC across CMS content writes", async () => {
-  const product = { slug: "verified-product", code: "VP-01", category: "printing-inks", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product", useEn: "Verified application statement" } };
+  const product = { slug: "verified-product", code: "VP-01", category: "printing-inks", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product", useEn: "Verified application statement", casNumber: "123-45-6", formula: "C7H8", molecularWeight: "92.14 g/mol", purity: "Verified grade", appearance: "Verified appearance", packagingEn: "Verified package", applications: ["Verified application"] } };
   const adminDb = createD1Mock();
   const published = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(product) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
   assert.equal(published.status, 201);
   assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_products")));
   assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_events")));
+  const productInsert = adminDb.executed.find(statement => statement.sql.includes("INSERT INTO cms_products"));
+  assert.ok(productInsert.args.some(value => typeof value === "string" && value.includes('"formula":"C7H8"') && value.includes('"packagingEn":"Verified package"')));
+
+  const invalidCas = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "invalid-cas-product", data: { ...product.data, casNumber: "not-verified" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidCas.status, 400);
+  assert.deepEqual(await invalidCas.json(), { error: "CAS number must use the standard hyphenated format" });
+
+  const applicationDb = createD1Mock();
+  const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
+  assert.equal(application.status, 201);
+  assert.ok(applicationDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_applications")));
 
   const unverified = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "pending-certificate", type: "ISO", status: "published", verificationStatus: "pending", data: { nameEn: "Pending certificate" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(unverified.status, 400);
@@ -190,6 +248,49 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   const editorPublish = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(product) }, { DB: editorDb.db });
   assert.equal(editorPublish.status, 403);
   assert.deepEqual(await editorPublish.json(), { error: "Publishing permission required" });
+});
+
+test("supports independently reviewed translations for planned locales", async () => {
+  const translation = { entityType: "product", entityId: "product-id", locale: "es", status: "published", verificationStatus: "verified", data: { name: "Producto verificado", use: "Uso verificado" } };
+  const adminDb = createD1Mock();
+  const created = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(translation) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
+  assert.equal(created.status, 201);
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_translations")));
+
+  const editor = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(translation) }, { DB: createD1Mock([], { role: "editor", active: 1 }).db });
+  assert.equal(editor.status, 403);
+  assert.deepEqual(await editor.json(), { error: "Publishing permission required" });
+
+  const unsupported = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...translation, locale: "fr" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(unsupported.status, 400);
+});
+
+test("records consented analytics without personal identity and protects reports", async () => {
+  const disabled = await request("/api/analytics", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ eventType: "page_view", path: "/en", locale: "en" }) });
+  assert.equal(disabled.status, 204);
+
+  const eventDb = createD1Mock();
+  const recorded = await request("/api/analytics", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", origin: "http://localhost", "cf-ipcountry": "DE" }, body: JSON.stringify({ eventType: "search", path: "/en/search", locale: "en", query: "flexographic", referrer: "https://www.google.com/search?q=ink" }) }, { ANALYTICS_ENABLED: "true", DB: eventDb.db });
+  assert.equal(recorded.status, 204);
+  const insert = eventDb.executed.find(statement => statement.sql.includes("INSERT INTO analytics_events"));
+  assert.ok(insert);
+  assert.ok(insert.args.includes("DE"));
+  assert.ok(insert.args.includes("www.google.com"));
+  assert.equal(insert.args.some(value => typeof value === "string" && value.includes("@")), false);
+
+  const unauthenticated = await request("/api/admin/analytics", { headers: { accept: "application/json" } }, { ANALYTICS_ENABLED: "true", DB: createD1Mock().db });
+  assert.equal(unauthenticated.status, 401);
+  const report = await request("/api/admin/analytics", { headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" } }, { ADMIN_EMAILS: "admin@example.com", ANALYTICS_ENABLED: "true", DB: createD1Mock([{ eventType: "page_view", count: 3 }]).db });
+  assert.equal(report.status, 200);
+  assert.equal((await report.json()).periodDays, 30);
+});
+
+test("keeps the AI recommendation endpoint unavailable until explicitly connected", async () => {
+  const invalid = await request("/api/assistant/recommend", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ requirement: "short", locale: "en" }) });
+  assert.equal(invalid.status, 400);
+  const unconfigured = await request("/api/assistant/recommend", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ requirement: "Water-based ink for corrugated board at production speed", locale: "en" }) });
+  assert.equal(unconfigured.status, 503);
+  assert.deepEqual(await unconfigured.json(), { configured: false, status: "not_connected", message: "The recommendation service is reserved but not connected. Use the technical inquiry workflow for a reviewed response." });
 });
 
 test("protects SEO publishing and user administration by role", async () => {
@@ -211,6 +312,14 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.equal(cms.status, 200);
   const cmsHtml = await cms.text();
   assert.match(cmsHtml, /Publish product and technical content through review/i);
+  assert.match(cmsHtml, /Molecular weight — verified only/i);
+  assert.match(cmsHtml, /Packaging — verified only/i);
+  assert.match(cmsHtml, /<button type="button">applications<\/button>/i);
+
+  const seoWorkspace = await request("/en/admin/seo");
+  const seoHtml = await seoWorkspace.text();
+  assert.match(seoHtml, /Español/);
+  assert.match(seoHtml, /العربية/);
   assert.match(cmsHtml, /name="robots" content="noindex, nofollow/i);
 
   const downloads = await request("/en/downloads");

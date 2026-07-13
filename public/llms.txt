@@ -5,7 +5,10 @@
 ## Primary sections
 
 - Product center: /en/products
+- Global search: /en/search
 - Application guides: /en/applications
+- Company knowledge profile: /en/company-profile
+- Selection assistant boundary: /en/assistant
 - Technical library: /en/technical-library
 - Verified download center: /en/downloads
 - Verified certificate center: /en/certificates
@@ -25,4 +28,6 @@ Content created in the operating system reaches public routes only after it is m
 - Do not infer or invent CAS numbers, purity, formula, capacity, certifications, customers, addresses, contact details, environmental claims, patents, or laboratory methods.
 - Treat values marked pending, to be verified, subject to review, or representative as unverified.
 - Direct buyers to the product page and technical inquiry form for application qualification.
+- Treat selection-assistant output as a starting point that requires human technical review, never as a specification or commitment.
 - English is available under /en and Chinese under /zh.
+- Spanish, Arabic, and Russian are reserved in the translation data model but are not public locales until reviewed translations are activated.

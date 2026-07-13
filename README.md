@@ -89,7 +89,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - `npm run dev`: start local development
 - `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
+- `npm test`: build the production bundle and run rendered-route and API acceptance tests
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
 ## TNV launch configuration
@@ -112,14 +112,25 @@ approved.
 - `ADMIN_EMAILS=owner@example.com,sales@example.com` is the explicit,
   comma-separated bootstrap allowlist for the administration workspace.
   Authentication alone does not grant admin access.
+- `ANALYTICS_ENABLED=true` enables consent-gated, first-party event storage.
+  Events intentionally exclude email, IP address, user agent, and form content.
+- `GA_MEASUREMENT_ID=G-...` optionally loads Google Analytics after consent on
+  a launch-ready production site. Preview and admin routes never load it.
+- `GOOGLE_SITE_VERIFICATION=...` publishes the Search Console verification
+  token through page metadata.
+- `AI_ASSISTANT_ENDPOINT=https://...` connects the reserved selection-assistant
+  boundary to a reviewed recommendation service. Without this value, the
+  endpoint returns an explicit `not_connected` response and routes buyers to a
+  human inquiry.
+- `AI_ASSISTANT_TOKEN=...` optionally authenticates the recommendation request.
 
 ## TNV content operations
 
 The private administration workspace uses the Material Atlas interface and D1
 as its durable source of truth:
 
-- `/en/admin/content` and `/zh/admin/content` manage products, knowledge
-  articles, certificates, and downloads.
+- `/en/admin/content` and `/zh/admin/content` manage products, applications,
+  knowledge articles, certificates, and downloads.
 - `/en/admin/seo` and `/zh/admin/seo` manage page-level bilingual titles,
   descriptions, and keywords.
 - `/en/admin/users` and `/zh/admin/users` manage the `admin`, `marketing`,
@@ -138,11 +149,57 @@ using the administration workspace. Bootstrap administrators come from
 `ADMIN_EMAILS`; subsequent users and roles live in `admin_users`. All content
 writes and publication decisions are recorded in `content_events`.
 
-Published CMS products and articles merge into the seed catalog by slug, so
+Published CMS products, applications, and articles merge into the seed catalog by slug, so
 existing public routes remain stable while verified content can progressively
 replace placeholders. Published page-level SEO overrides are applied at render
 time, and the launch-gated sitemap includes published dynamic routes. Admin
 routes remain noindex and are excluded from sitemap discovery.
+
+Products support verified CAS number, formula, molecular weight, purity,
+appearance, descriptions, intended uses, applications, benefits, packaging,
+structured specifications, and product-linked downloads. Empty identity fields
+are omitted rather than guessed. Published TDS, SDS, and COA records appear on
+their product page only when the file record is both verified and published;
+otherwise the page keeps an explicit pending or batch-confirmation state.
+
+Applications have the same draft, review, verification, publishing, audit, and
+translation lifecycle as products and articles. A verified application can add
+a dynamic `/applications/{slug}` route without removing any existing route.
+
+## Search, SEO, GEO, and localization
+
+- `/en/search` and `/zh/search` search product names, codes, verified CAS
+  numbers and identity fields, application needs, articles, and published
+  downloads. Search pages remain `noindex,follow` to avoid thin-result indexing.
+- `/en/knowledge` and `/zh/knowledge` provide categorized buyer guides with
+  internal product/application links, FAQ, checklists, and Article,
+  BreadcrumbList, and FAQPage structured data.
+- `/en/company-profile` and `/zh/company-profile` expose an attributable company
+  knowledge record. Unknown legal, manufacturing, market, certificate, and
+  contact facts remain visibly pending.
+- `public/llms.txt`, canonical links, `hreflang`, Open Graph, Product and
+  Organization structured data, launch-gated sitemap output, and admin-safe
+  robots rules form the SEO/GEO boundary.
+- English and Chinese are active public locales. English, Chinese, Spanish,
+  Arabic, and Russian are supported as independently reviewed CMS translation
+  records and SEO locales. A locale should become public only after its
+  navigation, legal copy, content coverage, RTL behavior where applicable, and
+  QA are complete.
+
+## Analytics and selection-assistant boundary
+
+Analytics collection begins only after the visitor accepts the site consent
+prompt. The first-party report at `/en/admin/analytics` and
+`/zh/admin/analytics` aggregates page views, site searches, product interest,
+document downloads, inquiry conversions, referring host, and Cloudflare country
+code over 30 days. It is a content and conversion report, not a user-profile
+system.
+
+The selection assistant at `/en/assistant` and `/zh/assistant` is deliberately
+fail-closed. A connected service may return a summary, verified product slugs,
+and clarification questions, but the public UI always requires human review and
+does not treat model output as a quotation, specification, or technical
+commitment.
 
 The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
 `area`, `company`, `country`, `requirement`, optional `productCode`, and

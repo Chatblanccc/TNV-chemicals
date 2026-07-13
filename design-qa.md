@@ -119,3 +119,44 @@ The side-by-side input compares the selected Material Atlas visual target and th
   corresponding commit.
 
 final result: passed
+
+## 2026-07-13 V2 platform completion pass
+
+- Added global search across product identity fields, applications, knowledge
+  content, and published documents with exact code/CAS ranking and a truthful
+  empty state.
+- Added independent EN/ZH/ES/AR/RU translation records, an explicit locale
+  registry with Arabic RTL metadata, and five-locale SEO/document administration
+  while keeping only reviewed English and Chinese public routes active.
+- Added consent-gated first-party analytics, optional post-consent GA loading,
+  Search Console verification metadata, a private 30-day content/conversion
+  report, and document-download tracking without storing form identity.
+- Added a fail-closed AI selection-assistant boundary and human-inquiry handoff;
+  the unconfigured endpoint returns an explicit service status instead of a
+  fabricated recommendation.
+- Added a source-bounded company knowledge profile and expanded `llms.txt` while
+  leaving legal identity, manufacturing, markets, contacts, and certificates
+  visibly pending.
+- Completed the product record with verified CAS, formula, molecular weight,
+  purity, appearance, packaging, applications, descriptions, structured specs,
+  and product-linked TDS/SDS/COA rendering.
+- Moved application paths into the governed CMS, verification, translation,
+  dynamic-route, search, related-content, and sitemap flow without removing
+  existing application URLs.
+- Reduced the 1536 × 1024 social image from 2,651,717-byte PNG to a 264,398-byte
+  JPEG, preloaded the three critical WOFF2 fonts, and added immutable/bounded
+  asset caching. No Lighthouse or Core Web Vitals number is claimed because the
+  available browser tool surface did not expose Chrome DevTools performance
+  tracing.
+- Browser checks at the available 1280 px surface confirmed the search,
+  assistant, product, and analytics-consent journeys render without horizontal
+  overflow or console warnings. Earlier milestone evidence retains exact
+  1440/1024/768/390/360 checks for the shared layout, CRM, and CMS surfaces.
+- A real local D1 application record was published through the admin API,
+  rendered at its dynamic application route, appeared in global search, and was
+  then archived. The route and search page both reported
+  `scrollWidth <= clientWidth`, and the browser log contained no warnings or
+  errors. The fixture identified itself as local-only and never represented
+  production company content.
+- The requirement-by-requirement implementation and production-input boundary
+  is recorded in `v2-implementation-audit.md`.

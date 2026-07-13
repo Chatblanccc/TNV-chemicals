@@ -16,6 +16,11 @@ const localBindingConfig = {
   compatibility_flags: ["nodejs_compat"],
   vars: {
     ADMIN_EMAILS: process.env.ADMIN_EMAILS || "",
+    ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || "false",
+    GA_MEASUREMENT_ID: process.env.GA_MEASUREMENT_ID || "",
+    GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION || "",
+    AI_ASSISTANT_ENDPOINT: process.env.AI_ASSISTANT_ENDPOINT || "",
+    AI_ASSISTANT_TOKEN: process.env.AI_ASSISTANT_TOKEN || "",
     INQUIRY_WEBHOOK_URL: process.env.INQUIRY_WEBHOOK_URL || "",
     INQUIRY_WEBHOOK_TOKEN: process.env.INQUIRY_WEBHOOK_TOKEN || "",
     SITE_LAUNCH_READY: process.env.SITE_LAUNCH_READY || "false",

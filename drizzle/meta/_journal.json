@@ -15,6 +15,20 @@
       "when": 1783919840885,
       "tag": "0001_good_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783922470505,
+      "tag": "0002_modern_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783925357941,
+      "tag": "0003_salty_luke_cage",
+      "breakpoints": true
     }
   ]
 }

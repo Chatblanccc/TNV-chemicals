@@ -39,20 +39,22 @@ export function MobileNav({ items, ctaHref, ctaLabel, languageHref, languageLabe
 
 type InquiryErrors = Partial<Record<"email" | "area" | "company" | "country" | "requirement" | "privacyAccepted", string>>;
 
-export function InquiryForm({ compact = false, labels, productCode, locale = "en", privacyHref }: {
+export function InquiryForm({ compact = false, labels, productCode, initialRequirement, locale = "en", privacyHref }: {
   compact?: boolean;
   labels: Record<string, string>;
   productCode?: string;
+  initialRequirement?: string;
   locale?: "en" | "zh";
   privacyHref?: string;
 }) {
-  return <InquiryFormInner compact={compact} labels={labels} productCode={productCode} locale={locale} privacyHref={privacyHref} />;
+  return <InquiryFormInner compact={compact} labels={labels} productCode={productCode} initialRequirement={initialRequirement} locale={locale} privacyHref={privacyHref} />;
 }
 
-function InquiryFormInner({ compact = false, labels, productCode, locale = "en", privacyHref = "/en/privacy-policy" }: {
+function InquiryFormInner({ compact = false, labels, productCode, initialRequirement, locale = "en", privacyHref = "/en/privacy-policy" }: {
   compact?: boolean;
   labels: Record<string, string>;
   productCode?: string;
+  initialRequirement?: string;
   locale?: "en" | "zh";
   privacyHref?: string;
 }) {
@@ -150,7 +152,7 @@ function InquiryFormInner({ compact = false, labels, productCode, locale = "en",
     {!compact && <>
       <label>{labels.company}<input name="company" required autoComplete="organization" placeholder={labels.companyPlaceholder} onChange={() => clearError("company")} aria-invalid={Boolean(errors.company)} aria-describedby={errors.company ? "company-error" : undefined} />{fieldError("company")}</label>
       <label>{labels.country}<input name="country" required autoComplete="country-name" placeholder={labels.countryPlaceholder} onChange={() => clearError("country")} aria-invalid={Boolean(errors.country)} aria-describedby={errors.country ? "country-error" : undefined} />{fieldError("country")}</label>
-      <label className="full">{labels.requirement}<textarea name="requirement" required maxLength={5000} rows={4} placeholder={labels.requirementPlaceholder} onChange={() => clearError("requirement")} aria-invalid={Boolean(errors.requirement)} aria-describedby={errors.requirement ? "requirement-error" : undefined} />{fieldError("requirement")}</label>
+      <label className="full">{labels.requirement}<textarea name="requirement" required maxLength={5000} rows={4} defaultValue={initialRequirement} placeholder={labels.requirementPlaceholder} onChange={() => clearError("requirement")} aria-invalid={Boolean(errors.requirement)} aria-describedby={errors.requirement ? "requirement-error" : undefined} />{fieldError("requirement")}</label>
       <label className="privacy-field full"><input name="privacyAccepted" type="checkbox" required onChange={() => clearError("privacyAccepted")} aria-invalid={Boolean(errors.privacyAccepted)} aria-describedby={errors.privacyAccepted ? "privacyAccepted-error" : undefined} /><span>{labels.privacyPrefix} <Link href={privacyHref}>{labels.privacyLink}</Link></span>{fieldError("privacyAccepted")}</label>
     </>}
     {status === "error" && <div className="form-status form-status-error full" role="alert">{labels.deliveryError}</div>}

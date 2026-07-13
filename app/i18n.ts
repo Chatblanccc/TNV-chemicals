@@ -1,4 +1,5 @@
-export type Locale = "en" | "zh";
+import type { Locale } from "./locales";
+export type { Locale } from "./locales";
 
 const zh: Record<string, string> = {
   "PRE-LAUNCH REVIEW SITE": "预发布审核站点",
@@ -7,6 +8,10 @@ const zh: Record<string, string> = {
   Applications: "应用",
   Quality: "质量",
   Resources: "资料",
+  Search: "搜索",
+  Assistant: "选型助手",
+  "Selection assistant": "选型助手",
+  "Company knowledge profile": "公司知识档案",
   Company: "公司",
   "Request a quote": "获取报价",
   "Application-led ink and chemical solutions for international industrial buyers.": "面向全球工业买家的应用导向型油墨与化学解决方案。",
