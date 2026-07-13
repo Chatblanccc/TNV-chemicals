@@ -226,12 +226,31 @@ th { width: 38%; color: var(--muted); font-weight: 650; }
 .article-grid span { color: var(--cyan); font-size: 9px; font-weight: 800; }
 .article-grid h3 { margin: 42px 0 16px; font-family: var(--font-editorial), serif; font-size: 28px; font-weight: 520; }
 .article-grid p { min-height: 70px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.article-grid small { display: block; margin: 18px 0; color: var(--accent-on-light); font-size: 9px; font-weight: 750; letter-spacing: .06em; }
+.knowledge-categories { padding: 0 var(--gutter); display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: var(--paper-deep); }
+.knowledge-categories a { min-height: 52px; padding: 16px 20px; display: flex; align-items: center; border-right: 1px solid var(--line); font-size: 10px; font-weight: 800; }
+.knowledge-categories a[aria-current="page"] { background: var(--ink); color: var(--white); }
 .article-page { max-width: 920px; margin: auto; padding: 110px var(--gutter); }
+.article-page > .breadcrumbs { margin-bottom: 44px; }
 .article-page h1 { font-family: var(--font-editorial), serif; font-size: clamp(52px, 6vw, 84px); font-weight: 520; line-height: .95; }
 .article-page .lead { color: var(--muted); font-size: 20px; line-height: 1.7; }
-.article-meta { margin: 35px 0 65px; padding: 16px 0; border-block: 1px solid var(--line); color: var(--cyan); font-size: 10px; font-weight: 700; }
+.article-meta { margin: 35px 0 65px; padding: 16px 0; display: flex; flex-wrap: wrap; gap: 10px 24px; border-block: 1px solid var(--line); color: var(--accent-on-light); font-size: 10px; font-weight: 700; }
 .article-page h2 { margin-top: 48px; font-family: var(--font-editorial), serif; font-size: 34px; font-weight: 520; }
-.article-page > p:not(.lead) { color: #394e58; line-height: 1.85; }
+.article-page > p:not(.lead), .article-page > section > p { color: #394e58; line-height: 1.85; }
+.article-checklist { margin-top: 70px; padding: 44px; background: var(--paper-deep); }
+.article-checklist h2, .article-related h2, .article-faq h2 { margin-top: 14px; }
+.article-checklist ul { margin: 28px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.article-checklist li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.article-checklist li::before { content: "✓"; margin-right: 12px; color: var(--accent-on-light); font-weight: 800; }
+.article-related, .article-faq { margin-top: 76px; }
+.article-related > div { margin-top: 28px; border-top: 1px solid var(--line); }
+.article-related a { padding: 20px 0; display: grid; grid-template-columns: 150px 1fr auto; gap: 20px; align-items: center; border-bottom: 1px solid var(--line); }
+.article-related a > span { color: var(--accent-on-light); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.article-related a > b { font-family: var(--font-editorial), serif; font-size: 24px; font-weight: 520; }
+.article-faq details { padding: 22px 0; border-top: 1px solid var(--line); }
+.article-faq details:last-child { border-bottom: 1px solid var(--line); }
+.article-faq summary { cursor: pointer; font-weight: 750; }
+.article-faq p { margin: 16px 0 0; color: var(--muted); line-height: 1.75; }
 
 .rfq { display: grid; grid-template-columns: .85fr 1.15fr; gap: 8vw; background: var(--cyan-soft); }
 .rfq h2 { margin: 18px 0 25px; font-family: var(--font-editorial), serif; font-size: clamp(44px, 4vw, 66px); font-weight: 520; line-height: .98; }
@@ -411,6 +430,14 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
   .document-status span:last-child { border-bottom: 0; }
   .qualification-brief { gap: 38px; }
   .qualification-brief dl > div { grid-template-columns: 1fr; gap: 7px; }
+  .knowledge-categories { display: grid; grid-template-columns: 1fr 1fr; }
+  .knowledge-categories a { border-bottom: 1px solid var(--line); }
+  .article-page { padding-top: 78px; }
+  .article-page .lead { font-size: 17px; }
+  .article-meta { display: grid; }
+  .article-checklist { padding: 30px 22px; }
+  .article-related a { grid-template-columns: 1fr auto; }
+  .article-related a > span { grid-column: 1 / -1; }
   .atlas-section { gap: 44px; }
   .section-intro h2 { font-size: 48px; }
   .application-cards, .evidence-grid, .product-atlas-grid, .technical-links, .product-grid, .library-grid, .article-grid { grid-template-columns: 1fr; }

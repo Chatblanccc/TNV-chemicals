@@ -68,6 +68,43 @@ test("adds qualification context and truthful structured product properties", as
   assert.match(html, /PropertyValue/i);
 });
 
+test("renders the bilingual knowledge center and topic routes", async () => {
+  const english = await request("/en/knowledge/application-guides");
+  assert.equal(english.status, 200);
+  const enHtml = await english.text();
+  assert.match(enHtml, /Knowledge center/i);
+  assert.match(enHtml, /How to Select Water-Based Flexographic Ink/i);
+  assert.doesNotMatch(enHtml, /TDS, SDS and COA: What Industrial Buyers Need/i);
+
+  const chinese = await request("/zh/knowledge/technical-guides");
+  assert.equal(chinese.status, 200);
+  const zhHtml = await chinese.text();
+  assert.match(zhHtml, /知识中心/i);
+  assert.match(zhHtml, /油墨样品评估清单/i);
+});
+
+test("publishes complete article content with internal links and SEO schema", async () => {
+  const response = await request("/en/knowledge/how-to-select-water-based-flexo-ink", {}, { SITE_URL: "https://example.com" });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Begin with the substrate, not the color/i);
+  assert.match(html, /Buyer checklist/i);
+  assert.match(html, /Related products and application routes/i);
+  assert.match(html, /FAQPage/i);
+  assert.match(html, /BreadcrumbList/i);
+  assert.match(html, /dateModified/i);
+  assert.match(html, /\/en\/products\/printing-inks\/water-based-flexographic-ink/i);
+});
+
+test("renders localized article body and FAQ content", async () => {
+  const response = await request("/zh/knowledge/tds-sds-coa-explained", {}, { SITE_URL: "https://example.com" });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /TDS：产品技术指导/i);
+  assert.match(html, /采购检查清单/i);
+  assert.match(html, /TDS 能否替代 SDS/i);
+});
+
 test("returns a real 404 for unknown localized routes", async () => {
   const response = await request("/zh/products/does-not-exist");
   assert.equal(response.status, 404);

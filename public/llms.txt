@@ -8,7 +8,8 @@
 - Application guides: /en/applications
 - Technical library: /en/technical-library
 - Quality and compliance review area: /en/quality-compliance
-- Technical insights: /en/insights
+- Knowledge center: /en/knowledge
+- Legacy insights route: /en/insights
 - Request a quote: /en/request-quote
 
 ## Current catalog scope
