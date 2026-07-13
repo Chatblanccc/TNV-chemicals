@@ -103,14 +103,23 @@ approved.
   review marker.
 - `SITE_URL=https://example.com` sets canonical, sitemap, social, and structured
   data URLs to the company-controlled production origin.
-- `INQUIRY_WEBHOOK_URL=https://...` enables inquiry delivery. Without it, the
-  form returns an honest delivery error instead of pretending submission.
+- The `DB` D1 binding is required for inquiry storage. Apply the generated
+  Drizzle migration before accepting production inquiries.
+- `INQUIRY_WEBHOOK_URL=https://...` optionally forwards a stored inquiry to a
+  sales notification workflow. Missing or failed notification never erases the
+  durable lead.
 - `INQUIRY_WEBHOOK_TOKEN=...` optionally adds a bearer token to webhook calls.
+- `ADMIN_EMAILS=owner@example.com,sales@example.com` is the explicit,
+  comma-separated allowlist for `/en/admin/inquiries` and
+  `/zh/admin/inquiries`. Authentication alone does not grant admin access.
 
 The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
 `area`, `company`, `country`, `requirement`, optional `productCode`, and
 `locale`. Keep it HTTPS-only, validate again downstream, and store secrets in
-deployment bindings rather than source control.
+deployment bindings rather than source control. The CRM pipeline is `new` →
+`contacted` → `quotation_sent` → `negotiation` → `completed`, with `archived`
+available for closed records; every status transition is written to the audit
+event table.
 
 Before setting `SITE_LAUNCH_READY=true`, run `npm run lint`,
 `npx tsc --noEmit`, and `npm test`, then verify the inquiry against the real

@@ -12,6 +12,29 @@ async function request(path = "/", init = {}, extraEnv = {}) {
   );
 }
 
+function createD1Mock(results = []) {
+  const executed = [];
+  const prepare = sql => ({
+    bind: (...args) => ({
+      sql,
+      args,
+      async run() { executed.push({ sql, args }); return { success: true }; },
+      async all() { executed.push({ sql, args }); return { results }; },
+      async first() { executed.push({ sql, args }); return { status: "new" }; },
+    }),
+  });
+  return {
+    executed,
+    db: {
+      prepare,
+      async batch(statements) {
+        for (const statement of statements) await statement.run();
+        return statements.map(() => ({ success: true }));
+      },
+    },
+  };
+}
+
 test("redirects the root URL to the canonical English locale", async () => {
   const response = await request("/");
   assert.ok([307, 308].includes(response.status));
@@ -111,11 +134,44 @@ test("returns a real 404 for unknown localized routes", async () => {
   assert.match(response.headers.get("x-robots-tag") ?? "", /noindex/i);
 });
 
-test("keeps inquiry delivery honest until a webhook is configured", async () => {
+test("requires durable storage before accepting an inquiry", async () => {
   const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh" };
   const response = await request("/api/inquiry", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Inquiry delivery is not configured" });
+  assert.deepEqual(await response.json(), { error: "Inquiry storage is not configured" });
+});
+
+test("stores an inquiry even when outbound notification is not configured", async () => {
+  const { db, executed } = createD1Mock();
+  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh", sourcePath: "/zh/request-quote" };
+  const response = await request("/api/inquiry", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) }, { DB: db });
+  assert.equal(response.status, 201);
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.notificationStatus, "not_configured");
+  assert.match(body.inquiryId, /^[0-9a-f-]{36}$/i);
+  assert.ok(executed.some(statement => statement.sql.includes("INSERT INTO inquiries")));
+  assert.ok(executed.some(statement => statement.sql.includes("INSERT INTO inquiry_events")));
+});
+
+test("protects the inquiry workspace with identity and an explicit allowlist", async () => {
+  const unauthenticated = await request("/api/admin/inquiries", { headers: { accept: "application/json" } });
+  assert.equal(unauthenticated.status, 401);
+  const forbidden = await request("/api/admin/inquiries", { headers: { accept: "application/json", "oai-authenticated-user-email": "user@example.com" } }, { ADMIN_EMAILS: "admin@example.com" });
+  assert.equal(forbidden.status, 403);
+
+  const { db } = createD1Mock([{ id: "inq-1", status: "new", company: "Example", email: "buyer@example.com", country: "CN" }]);
+  const allowed = await request("/api/admin/inquiries", { headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" } }, { ADMIN_EMAILS: "admin@example.com", DB: db });
+  assert.equal(allowed.status, 200);
+  assert.equal((await allowed.json()).inquiries.length, 1);
+});
+
+test("renders the inquiry workspace as a private, non-indexable route", async () => {
+  const response = await request("/en/admin/inquiries");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /From new lead to sales follow-up/i);
+  assert.match(html, /name="robots" content="noindex, nofollow/i);
 });
 
 test("redirects the legacy favicon path to the real SVG asset", async () => {

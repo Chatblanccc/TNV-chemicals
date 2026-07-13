@@ -5,6 +5,7 @@ import { alternateLocale, localizedPath, splitLocalizedRoute, t, type Locale } f
 import { media, type SiteMedia } from "./media";
 import { ProductFinder } from "./product-finder";
 import { InquiryForm, MobileNav } from "./site-interactions";
+import { AdminInquiries } from "./admin-inquiries";
 
 const Arrow = () => <ArrowUpRight aria-hidden="true" size={17} weight="regular" />;
 const knowledgeCategoryLabel = (locale: Locale, slug: string, fallback: string) => locale === "zh" ? ({ "application-guides": "应用指南", "technical-guides": "技术指南", "procurement-guides": "采购指南" }[slug] || fallback) : fallback;
@@ -164,6 +165,17 @@ function Insights({ slug, locale, routeBase }: { slug?: string; locale: Locale; 
   return <main><PageHero locale={locale} eyebrow={eyebrow} title={title} intro={intro}/>{routeBase === "/knowledge" && <nav className="knowledge-categories" aria-label={locale === "zh" ? "知识中心分类" : "Knowledge categories"}><Link aria-current={!category ? "page" : undefined} href={localizedPath(locale, "/knowledge")}>{locale === "zh" ? "全部指南" : "All guides"}</Link>{knowledgeCategories.map(item => <Link key={item.slug} aria-current={category?.slug === item.slug ? "page" : undefined} href={localizedPath(locale, `/knowledge/${item.slug}`)}>{knowledgeCategoryLabel(locale, item.slug, item.name)}</Link>)}</nav>}<section className="section article-grid">{listing.map(item => <Link key={item.slug} href={localizedPath(locale, `${routeBase}/${item.slug}`)}><span>{t(locale, item.type)}</span><h3>{t(locale, item.title)}</h3><p>{t(locale, item.summary)}</p><small>{locale === "zh" ? `约 ${item.readingMinutes} 分钟 · ${item.updated}` : `${item.readingMinutes} min · ${item.updated}`}</small><b>{t(locale, "Read guide")} <Arrow /></b></Link>)}</section></main>;
 }
 
+function InquiryAdminPage({ locale }: { locale: Locale }) {
+  return <main className="admin-page">
+    <section className="admin-heading">
+      <span className="eyebrow">{locale === "zh" ? "询盘管理" : "INQUIRY MANAGEMENT"}</span>
+      <h1>{locale === "zh" ? "从新线索到销售跟进。" : "From new lead to sales follow-up."}</h1>
+      <p>{locale === "zh" ? "筛选询盘、核对客户需求并记录销售阶段。此区域仅向已授权管理员开放。" : "Filter inquiries, review buyer requirements and keep each sales stage current. This workspace is restricted to authorized administrators."}</p>
+    </section>
+    <AdminInquiries locale={locale}/>
+  </main>;
+}
+
 export function SitePage({ route: inputRoute, searchParams = {} }: { route: string; searchParams?: Record<string, string | string[] | undefined> }) {
   const { locale, route } = splitLocalizedRoute(inputRoute);
   const product = products.find(p => route.endsWith(`/${p.slug}`));
@@ -176,6 +188,7 @@ export function SitePage({ route: inputRoute, searchParams = {} }: { route: stri
   else if (product) page = <ProductDetail product={product} locale={locale}/>;
   else if (route === "/applications") page = <ApplicationsPage locale={locale}/>;
   else if (application) page = <ApplicationDetail item={application} locale={locale}/>;
+  else if (route === "/admin/inquiries") page = <InquiryAdminPage locale={locale}/>;
   else if (route === "/insights" || route === "/knowledge" || insightSlug) page = <Insights slug={insightSlug} locale={locale} routeBase={route.startsWith("/knowledge") ? "/knowledge" : "/insights"}/>;
   const article = articles.find(a => a.slug === insightSlug);
   const baseUrl = process.env.SITE_URL?.replace(/\/$/, "");

@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
     "/quality-compliance": "Quality & compliance", "/technical-library": "TECHNICAL LIBRARY",
     "/about": "ABOUT TNV CHEMICALS", "/about/factory": "FACTORY", "/about/research-development": "RESEARCH & DEVELOPMENT",
     "/about/quality-control": "QUALITY CONTROL", "/insights": "Insights", "/knowledge": "Knowledge center", "/contact": "Contact",
-    "/request-quote": "Request a quote", "/privacy-policy": "Privacy", "/terms": "Terms",
+    "/request-quote": "Request a quote", "/admin/inquiries": "Inquiry management", "/privacy-policy": "Privacy", "/terms": "Terms",
   };
   const contentArticle = article || knowledgeArticle;
   const label = route === "/" ? "TNV Chemicals" : product?.name || app?.name || contentArticle?.title || knowledgeCategory?.name || routeLabels[route] || "TNV Chemicals";
@@ -45,6 +45,7 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
     alternates: { canonical: localizedPath(locale, route), languages: { en: localizedPath("en", route), "zh-CN": localizedPath("zh", route), "x-default": localizedPath("en", route) } },
     openGraph: { title, description, type: contentArticle ? "article" : "website", locale: locale === "zh" ? "zh_CN" : "en_US", images: [{ url: "/og.png", width: 1536, height: 1024, alt: locale === "zh" ? "TNV Chemicals 工业油墨与应用解决方案" : "TNV Chemicals industrial ink and application solutions" }] },
     twitter: { card: "summary_large_image", title, description, images: ["/og.png"] },
+    ...(route.startsWith("/admin/") ? { robots: { index: false, follow: false, noarchive: true, nosnippet: true } } : {}),
   };
 }
 

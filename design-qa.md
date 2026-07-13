@@ -13,8 +13,8 @@
 - Verified the mobile menu locks background scroll, includes the language
   switcher, closes with Escape, and returns focus to the trigger.
 - Verified product-code handoff into the RFQ, 16px mobile controls, accessible
-  validation, privacy acknowledgement, and an honest unconfigured-delivery
-  error state.
+  validation, privacy acknowledgement, durable-storage failure handling, and
+  notification state that does not pretend an unconfigured webhook succeeded.
 - Preview status remains intentionally visible because legal identity, contact
   details, certifications, and TDS/SDS files have not been supplied. The build
   therefore remains noindex by default.
@@ -75,5 +75,22 @@ The side-by-side input compares the selected Material Atlas visual target and th
 - The pre-launch review strip intentionally remains above the selected mock's header so unverified facts are not mistaken for production claims.
 - Replace generated placeholder photography with original TNV facility, sample, and press imagery after company review.
 - Re-run contrast, screen-reader, 200% zoom, and translation-length testing after final bilingual content is supplied.
+
+## 2026-07-13 inquiry CRM milestone
+
+- Added a Material Atlas-aligned inquiry workspace at `/en/admin/inquiries` and
+  `/zh/admin/inquiries`, backed by D1 rather than browser-only state.
+- Verified the unauthenticated state, ChatGPT sign-in path, explicit admin
+  allowlist, status filtering, keyword search, and the six-stage sales pipeline.
+- Inquiry creation now persists the customer, lead, source path, notification
+  result, and audit events before any optional webhook notification is attempted.
+- Admin routes are excluded from sitemap and robots discovery and emit explicit
+  noindex/nofollow metadata.
+- Exact CDP viewport checks at 1440, 1024, 768, 390, and 360 CSS pixels confirmed
+  `scrollWidth <= clientWidth`, the authorization state is visible, mobile
+  navigation remains reachable, and no page content is clipped.
+- The in-app browser check at 1280 px reported no console warnings or errors.
+- Automated acceptance: lint passed, TypeScript passed, production build passed,
+  and all 14 rendered/API tests passed.
 
 final result: passed

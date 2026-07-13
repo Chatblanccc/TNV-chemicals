@@ -100,6 +100,7 @@ function InquiryFormInner({ compact = false, labels, productCode, locale = "en",
           privacyAccepted: data.get("privacyAccepted") === "on",
           productCode,
           locale,
+          sourcePath: window.location.pathname,
           website: data.get("website"),
         }),
       });
