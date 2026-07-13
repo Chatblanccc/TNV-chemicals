@@ -293,3 +293,34 @@ final result: passed
   or errors.
 - Automated acceptance: lint passed, direct TypeScript checking passed,
   production build passed, and all 28 rendered/API tests passed.
+
+## 2026-07-13 governed download relationships and lifecycle
+
+- Published TDS, SDS, and COA files now require a valid public product slug and
+  a supported document locale. The API rejects malformed or unavailable product
+  relationships and non-document site-relative URLs.
+- The CMS permits only one current published TDS/SDS/COA record per product,
+  type, and language. Normalized D1 relationship/locale columns and a partial
+  unique index enforce the invariant under concurrent writes; operators must
+  archive a prior record before publishing its replacement.
+- Published-content resolution omits linked documents when their product is no
+  longer public. Download center, technical library, product detail, and global
+  search filter documents to the active public language.
+- Download cards display the governed document language plus their linked
+  product or general-library scope. Product document slots keep explicit pending
+  and confirm-by-batch states when no matching current-language file exists.
+- Browser checks on the download editor and English download center at 1440,
+  1024, 768, 390, and 360 CSS pixels confirmed the new relationship guidance,
+  required product control, metadata, and cards remain visible with
+  `scrollWidth == clientWidth`.
+- Local-only English TDS, Chinese SDS, and English catalog fixtures verified
+  language isolation across download centers, product pages, and global search.
+  A duplicate English TDS was rejected by the real local database. Archiving all
+  fixtures removed their public links and restored the product's pending state.
+- Migration `0007_white_doctor_spectrum.sql` executed successfully against the
+  local D1 database, backfilled legacy JSON relationships into normalized
+  columns, and created the partial unique index. A direct duplicate insert was
+  rejected by the database constraint. A post-migration TDS fixture rendered
+  from the normalized columns and was archived after verification.
+- Browser logs contained no warnings or errors. Lint, direct TypeScript checking,
+  production build, and all 28 rendered/API tests passed.

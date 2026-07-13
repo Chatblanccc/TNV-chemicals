@@ -358,6 +358,36 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(unverified.status, 400);
   assert.deepEqual(await unverified.json(), { error: "Only verified content can be published" });
 
+  const download = { slug: "verified-product-tds", type: "tds", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product TDS", fileUrl: "https://example.com/verified-tds.pdf", productSlug: "water-based-flexographic-ink", locale: "en" } };
+  const downloadDb = createD1Mock([], null);
+  const validDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(download) }, { ADMIN_EMAILS: "admin@example.com", DB: downloadDb.db });
+  assert.equal(validDownload.status, 201);
+  assert.ok(downloadDb.executed.some(statement => statement.sql.includes("INSERT INTO downloads")));
+
+  const missingProductDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "missing-product-tds", data: { ...download.data, productSlug: "" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(missingProductDownload.status, 400);
+  assert.deepEqual(await missingProductDownload.json(), { error: "Published TDS, SDS and COA files must link to a product" });
+
+  const invalidLocaleDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "invalid-locale-tds", data: { ...download.data, locale: "fr" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(invalidLocaleDownload.status, 400);
+  assert.deepEqual(await invalidLocaleDownload.json(), { error: "Document language must use a supported content locale" });
+
+  const invalidProductSlugDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "invalid-product-slug-tds", data: { ...download.data, productSlug: "Not a slug" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(invalidProductSlugDownload.status, 400);
+  assert.deepEqual(await invalidProductSlugDownload.json(), { error: "Product link must use a valid product slug" });
+
+  const unknownProductDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "unknown-product-tds", data: { ...download.data, productSlug: "unknown-product" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unknownProductDownload.status, 400);
+  assert.deepEqual(await unknownProductDownload.json(), { error: "Linked product must be published and verified before its document can be published" });
+
+  const duplicateDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "duplicate-product-tds" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], { id: "existing-download" }).db });
+  assert.equal(duplicateDownload.status, 400);
+  assert.deepEqual(await duplicateDownload.json(), { error: "Archive the current product document before publishing a replacement for the same type and language" });
+
+  const unsafeRelativeDownload = await request("/api/admin/content/downloads", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...download, slug: "unsafe-relative-tds", data: { ...download.data, fileUrl: "/privacy-policy" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unsafeRelativeDownload.status, 400);
+  assert.deepEqual(await unsafeRelativeDownload.json(), { error: "A verified HTTPS or uploaded PDF URL is required before publication" });
+
   const editorDb = createD1Mock([], { role: "editor", active: 1 });
   const editorPublish = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(product) }, { DB: editorDb.db });
   assert.equal(editorPublish.status, 403);

@@ -141,9 +141,20 @@ with the actual company owner before launch.
 
 - Governed SDS, TDS, COA, catalog, certificate, and other document records,
   including permission-controlled PDF upload to R2.
-- Files support product slug and document locale.
-- Verified published TDS/SDS/COA files appear on the matching product page;
-  missing files stay marked pending or confirm-by-batch.
+- Files support a validated product slug and required supported document
+  locale. Published TDS/SDS/COA records must reference a published, verified
+  product.
+- Only one current TDS/SDS/COA record may be published per product, document
+  type, and language. Normalized relationship/locale columns and a partial
+  unique D1 index enforce the rule even under concurrent publication; a
+  replacement requires archiving the prior record.
+- Download center, technical library, product pages, and global search expose
+  only files matching the active public language. Linked records whose product
+  is no longer public are omitted.
+- Archiving immediately removes public links and revokes access to governed R2
+  objects when no other published record references them. Storage deletion is
+  intentionally deferred to the company-approved retention process.
+- Missing product files stay marked pending or confirm-by-batch.
 - Public document clicks are eligible for consented `document_download`
   analytics.
 

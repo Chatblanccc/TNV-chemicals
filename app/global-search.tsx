@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, MagnifyingGlass } from "@phosphor-icons/react/ssr";
 import { localizedPath, t, type Locale } from "./i18n";
 import type { PublishedSiteContent } from "./published-content";
+import { localeRegistry } from "./locales";
 
 type SearchResult = {
   key: string;
@@ -54,10 +55,11 @@ function collectResults(locale: Locale, query: string, content: PublishedSiteCon
     if (score) results.push({ key: `article-${article.slug}`, type: "article", title, description, meta: localized(locale, article.type, article.typeZh), href: localizedPath(locale, `/knowledge/${article.slug}`), score });
   }
   for (const download of content.downloads) {
+    if (download.locale !== locale) continue;
     const title = localized(locale, download.name, download.nameZh);
     const description = localized(locale, download.description || "", download.descriptionZh);
     const score = matchScore(query, [title, description, download.type, download.productSlug || "", download.slug]);
-    if (score) results.push({ key: `download-${download.id}`, type: "download", title, description, meta: download.type.toUpperCase(), href: download.fileUrl, score });
+    if (score) results.push({ key: `download-${download.id}`, type: "download", title, description, meta: `${download.type.toUpperCase()} · ${localeRegistry[download.locale].nativeLabel}`, href: download.fileUrl, score });
   }
   return results.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, locale));
 }

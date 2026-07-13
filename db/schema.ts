@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 export const customers = sqliteTable("customers", {
   id: text("id").primaryKey(),
@@ -128,11 +129,19 @@ export const downloads = sqliteTable("downloads", {
   status: text("status", { enum: ["draft", "review", "published", "archived"] }).notNull().default("draft"),
   verificationStatus: text("verification_status", { enum: ["pending", "verified", "rejected"] }).notNull().default("pending"),
   dataJson: text("data_json").notNull(),
+  productSlug: text("product_slug"),
+  locale: text("locale", { enum: ["en", "zh", "es", "ar", "ru"] }).notNull().default("en"),
   updatedBy: text("updated_by").notNull(),
   publishedAt: integer("published_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-}, table => [uniqueIndex("downloads_slug_unique").on(table.slug), index("downloads_status_idx").on(table.status, table.updatedAt)]);
+}, table => [
+  uniqueIndex("downloads_slug_unique").on(table.slug),
+  uniqueIndex("downloads_current_product_document_unique")
+    .on(table.type, table.productSlug, table.locale)
+    .where(sql`${table.status} = 'published' and ${table.verificationStatus} = 'verified' and ${table.type} in ('sds', 'tds', 'coa')`),
+  index("downloads_status_idx").on(table.status, table.updatedAt),
+]);
 
 export const seoMetadata = sqliteTable("seo_metadata", {
   id: text("id").primaryKey(),

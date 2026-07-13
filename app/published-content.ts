@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { cmsApplications, cmsArticles, cmsCategories, cmsProducts, certificates, companyProfiles, contentTranslations, downloads, seoMetadata } from "../db/schema";
 import { applications as seedApplications, articles as seedArticles, products as seedProducts } from "./site-data";
 import { articleCoverMedia, type ArticleCoverMediaKey } from "./media";
+import { isContentLocale, type ContentLocale } from "./locales";
 
 export type PublishedProduct = {
   slug: string; code: string; name: string; nameZh?: string; category: string; categoryName: string; categoryNameZh?: string;
@@ -27,7 +28,7 @@ export type PublishedCompanyProfile = {
 };
 
 export type PublishedCertificate = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; issuedDate: string; expiresDate?: string; validity: "current" | "expired" | "unspecified" };
-export type PublishedDownload = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; productSlug?: string; locale?: string };
+export type PublishedDownload = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; productSlug?: string; locale: ContentLocale };
 export type PublishedSeo = { title: string; description: string; keywords: string[] };
 export type PublishedSiteContent = { products: PublishedProduct[]; categories: PublishedCategory[]; companyProfile: PublishedCompanyProfile | null; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
 
@@ -138,10 +139,20 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       const validity: PublishedCertificate["validity"] = !validExpiry ? "unspecified" : expiresDate < today ? "expired" : "current";
       return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), issuedDate, expiresDate: expiresDate || undefined, validity };
     }).filter(item => item.name && item.fileUrl && item.issuedDate);
-    const publishedDownloads: PublishedDownload[] = downloadRows.map(row => { const data = objectValue(row.dataJson); const en = translation("download", row.id, "en"); const zh = translation("download", row.id, "zh"); return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), productSlug: stringValue(data.productSlug), locale: stringValue(data.locale) }; }).filter(item => item.name && item.fileUrl);
     const publishedCategories = mergeBySlug(seededCategories, categoryOverrides);
     const categoryMap = new Map(publishedCategories.map(category => [category.slug, category]));
     const publishedProducts = mergeBySlug(seededProducts, productOverrides).map(product => { const category = categoryMap.get(product.category); return category ? { ...product, categoryName: category.name, categoryNameZh: category.nameZh || product.categoryNameZh } : product; });
+    const publishedProductSlugs = new Set(publishedProducts.map(product => product.slug));
+    const publishedDownloads: PublishedDownload[] = downloadRows.flatMap(row => {
+      const data = objectValue(row.dataJson);
+      const en = translation("download", row.id, "en");
+      const zh = translation("download", row.id, "zh");
+      const rawLocale = row.locale || stringValue(data.locale) || "en";
+      const productSlug = row.productSlug || stringValue(data.productSlug);
+      if (!isContentLocale(rawLocale) || (productSlug && !publishedProductSlugs.has(productSlug))) return [];
+      const item: PublishedDownload = { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), productSlug: productSlug || undefined, locale: rawLocale };
+      return item.name && item.fileUrl ? [item] : [];
+    });
     return { products: publishedProducts, categories: publishedCategories, companyProfile: publishedCompanyProfile, applications: mergeBySlug(seededApplications, applicationOverrides), articles: mergeBySlug(seededArticles, articleOverrides), certificates: publishedCertificates, downloads: publishedDownloads };
   } catch {
     return { products: seededProducts, categories: seededCategories, companyProfile: null, applications: seededApplications, articles: seededArticles, certificates: [], downloads: [] };

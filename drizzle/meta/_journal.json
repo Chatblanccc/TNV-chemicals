@@ -50,6 +50,13 @@
       "when": 1783933888772,
       "tag": "0006_curvy_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783941489076,
+      "tag": "0007_white_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

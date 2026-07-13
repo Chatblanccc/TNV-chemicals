@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { articleCoverMediaKeys } from "../app/media";
+import { products as seedProducts } from "../app/site-data";
 
 interface Env {
   ASSETS: Fetcher;
@@ -375,11 +376,19 @@ const contentConfig: Record<ContentType, { table: string; entity: "product" | "c
 const contentStatuses: ContentStatus[] = ["draft", "review", "published", "archived"];
 const verificationStatuses: VerificationStatus[] = ["pending", "verified", "rejected"];
 const downloadTypes = ["sds", "tds", "coa", "catalog", "certificate", "other"];
+const productDocumentTypes = new Set(["sds", "tds", "coa"]);
+const seedProductSlugs = new Set(seedProducts.map(product => product.slug));
 const contentLocales = ["en", "zh", "es", "ar", "ru"] as const;
 
 function isSafeFileUrl(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
   if (value.startsWith("/") && !value.startsWith("//")) return true;
+  try { return new URL(value).protocol === "https:"; } catch { return false; }
+}
+
+function isSafeDocumentUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  if (/^\/documents\/[0-9a-f-]+\.pdf$/i.test(value)) return true;
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
 
@@ -424,13 +433,34 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "certificates" && input.data.issuedDate && input.data.expiresDate && String(input.data.expiresDate) < String(input.data.issuedDate)) return "Certificate expiry date cannot be before its issue date";
   if (type === "certificates" && input.status === "published" && !isIsoDate(input.data.issuedDate)) return "A verified issue date is required before publishing a certificate";
   if (type === "certificates" && input.status === "published" && String(input.data.issuedDate) > new Date().toISOString().slice(0, 10)) return "Certificate issue date cannot be in the future";
-  if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string")) return "Download type and English name are required";
-  if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeFileUrl(input.data.fileUrl)) return "A verified HTTPS or site-relative file URL is required before publication";
+  if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string" || !input.data.nameEn.trim())) return "Download type and English name are required";
+  if (type === "downloads" && (typeof input.data.locale !== "string" || !contentLocales.includes(input.data.locale as typeof contentLocales[number]))) return "Document language must use a supported content locale";
+  if (type === "downloads" && input.data.productSlug !== undefined && input.data.productSlug !== "" && (typeof input.data.productSlug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.data.productSlug))) return "Product link must use a valid product slug";
+  if (type === "downloads" && input.status === "published" && productDocumentTypes.has(input.type || "") && !input.data.productSlug) return "Published TDS, SDS and COA files must link to a product";
+  if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeDocumentUrl(input.data.fileUrl)) return "A verified HTTPS or uploaded PDF URL is required before publication";
+  return null;
+}
+
+async function validatePublishedDownloadRelationship(input: ContentInput, env: Env, recordId?: string): Promise<string | null> {
+  if (input.status !== "published" || !input.data || typeof input.data.productSlug !== "string" || !input.data.productSlug) return null;
+  const productSlug = input.data.productSlug;
+  if (!seedProductSlugs.has(productSlug)) {
+    const product = await env.DB.prepare("SELECT id FROM cms_products WHERE slug = ? AND status = 'published' AND verification_status = 'verified' LIMIT 1").bind(productSlug).first<{ id: string }>();
+    if (!product) return "Linked product must be published and verified before its document can be published";
+  }
+  if (productDocumentTypes.has(input.type || "")) {
+    const duplicate = await env.DB.prepare("SELECT id FROM downloads WHERE status = 'published' AND verification_status = 'verified' AND type = ? AND product_slug = ? AND locale = ? AND (? = '' OR id <> ?) LIMIT 1")
+      .bind(input.type, productSlug, input.data.locale, recordId || "", recordId || "").first<{ id: string }>();
+    if (duplicate) return "Archive the current product document before publishing a replacement for the same type and language";
+  }
   return null;
 }
 
 function contentWriteError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "";
+  if (message.includes("downloads_current_product_document_unique") || (message.includes("downloads.type") && message.includes("downloads.product_slug") && message.includes("downloads.locale"))) {
+    return Response.json({ error: "Archive the current product document before publishing a replacement for the same type and language" }, { status: 409 });
+  }
   if (message.toLowerCase().includes("unique")) return Response.json({ error: "That slug is already in use" }, { status: 409 });
   return storageError(error);
 }
@@ -463,6 +493,12 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     const error = validateContentInput(type, input);
     if (error) return Response.json({ error }, { status: 400 });
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    if (type === "downloads") {
+      try {
+        const relationshipError = await validatePublishedDownloadRelationship(input, env);
+        if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
+      } catch (relationshipError) { return storageError(relationshipError); }
+    }
     const id = crypto.randomUUID();
     const now = Date.now();
     const publishedAt = input.status === "published" ? now : null;
@@ -480,7 +516,7 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
           ? env.DB.prepare("INSERT INTO cms_articles (id, slug, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
           : type === "certificates"
             ? env.DB.prepare("INSERT INTO certificates (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
-            : env.DB.prepare("INSERT INTO downloads (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now);
+            : env.DB.prepare("INSERT INTO downloads (id, slug, type, status, verification_status, data_json, product_slug, locale, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type, input.status, input.verificationStatus, dataJson, input.data!.productSlug || null, input.data!.locale, admin.email, publishedAt, now, now);
     try {
       await env.DB.batch([insert, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, id, eventAction, admin.email, now)]);
       return Response.json({ ok: true, id, status: input.status }, { status: 201 });
@@ -496,6 +532,10 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     try {
       const current = await env.DB.prepare(`SELECT status FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ status: ContentStatus }>();
       if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
+      if (type === "downloads") {
+        const relationshipError = await validatePublishedDownloadRelationship(input, env, recordId);
+        if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
+      }
       const now = Date.now();
       const publishedAt = input.status === "published" ? now : null;
       const dataJson = JSON.stringify(input.data);
@@ -511,7 +551,7 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
             ? env.DB.prepare("UPDATE cms_articles SET slug = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
             : type === "certificates"
               ? env.DB.prepare("UPDATE certificates SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
-              : env.DB.prepare("UPDATE downloads SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId);
+              : env.DB.prepare("UPDATE downloads SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, product_slug = ?, locale = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type, input.status, input.verificationStatus, dataJson, input.data!.productSlug || null, input.data!.locale, admin.email, publishedAt, now, recordId);
       const action = input.status === "published" && current.status !== "published" ? "published" : input.status === "archived" ? "archived" : current.status === "published" && input.status !== "published" ? "unpublished" : "updated";
       await env.DB.batch([update, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, recordId, action, admin.email, now)]);
       return Response.json({ ok: true, id: recordId, status: input.status });

@@ -148,8 +148,8 @@ Content uses separate editorial and verification states. Only records with both
 `status=published` and `verification_status=verified` can appear on public
 routes. This prevents draft or unverified product claims, certificates, and
 technical files from leaking into the buyer experience. Certificate and
-download records also require an HTTPS or site-relative file URL before they can
-be published. Their editor can upload PDF files (20 MB maximum) to the bound R2
+download records also require an HTTPS URL or a generated `/documents/*.pdf`
+URL before they can be published. Their editor can upload PDF files (20 MB maximum) to the bound R2
 bucket and automatically reuse the generated site-relative URL; upload alone
 never publishes or exposes the object. Published certificates additionally
 require a valid, non-future issue date. An optional expiry date cannot precede
@@ -177,8 +177,15 @@ first-class packaging and MOQ fields are merged into the public technical table,
 locale-aware Product structured data, and global search without duplicating a
 manually entered specification. Empty identity fields
 are omitted rather than guessed. Published TDS, SDS, and COA records appear on
-their product page only when the file record is both verified and published;
-otherwise the page keeps an explicit pending or batch-confirmation state.
+their product page only when the file record is verified, published, linked to a
+published product, and assigned to the current page language. A product can
+have only one current published file for each TDS/SDS/COA type and language;
+the normalized `downloads.product_slug` and `downloads.locale` columns plus a
+partial unique index enforce this rule under concurrent writes. Publishers
+archive the prior record before releasing a replacement. Archived
+records immediately lose their public link while the audit record and stored
+object remain available to the governed retention process. Missing files keep
+an explicit pending or batch-confirmation state.
 The PRD-compatible `/products/{slug}` shortcut permanently redirects to the
 canonical `/products/{category}/{slug}` route, preserving the established URL
 structure without creating duplicate indexable pages.
