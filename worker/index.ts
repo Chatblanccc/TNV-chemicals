@@ -304,7 +304,8 @@ async function handleAssistant(request: Request, env: Env): Promise<Response> {
     if (!upstream.ok) throw new Error("Assistant service unavailable");
     const result = await upstream.json() as { summary?: unknown; productSlugs?: unknown; questions?: unknown };
     const summary = shortText(result.summary, 2000);
-    const productSlugs = Array.isArray(result.productSlugs) ? result.productSlugs.filter(value => typeof value === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)).slice(0, 6) : [];
+    const candidateProductSlugs = Array.isArray(result.productSlugs) ? Array.from(new Set(result.productSlugs.filter((value): value is string => typeof value === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)))).slice(0, 6) : [];
+    const productSlugs = (await Promise.all(candidateProductSlugs.map(async slug => [slug, await resolvePublicProduct(slug, env)] as const))).filter(([, product]) => Boolean(product)).map(([slug]) => slug);
     const questions = Array.isArray(result.questions) ? result.questions.filter(value => typeof value === "string").map(value => value.slice(0, 300)).slice(0, 6) : [];
     if (!summary) throw new Error("Invalid assistant response");
     return Response.json({ configured: true, status: "review_required", summary, productSlugs, questions });

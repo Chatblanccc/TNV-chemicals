@@ -542,6 +542,23 @@ test("keeps the AI recommendation endpoint unavailable until explicitly connecte
   assert.deepEqual(await unconfigured.json(), { configured: false, status: "not_connected", message: "The recommendation service is reserved but not connected. Use the technical inquiry workflow for a reviewed response." });
 });
 
+test("filters connected assistant recommendations through the current public product graph", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    assert.equal(String(input), "https://assistant.example/recommend");
+    return Response.json({ summary: "Potential matches require technical review.", productSlugs: ["industrial-color-concentrate", "industrial-color-concentrate", "water-based-flexographic-ink", "unknown-product", "Not a slug"], questions: ["What substrate will be printed?"] });
+  };
+  try {
+    const db = createD1Mock([], (sql, args) => sql.includes("FROM cms_products") && args[0] === "water-based-flexographic-ink" ? { id: "archived-seed", slug: "water-based-flexographic-ink", category: "printing-inks", status: "archived", verificationStatus: "verified" } : null);
+    const response = await request("/api/assistant/recommend", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ requirement: "Color concentrate for a reviewed industrial formulation workflow", locale: "en" }) }, { AI_ASSISTANT_ENDPOINT: "https://assistant.example/recommend", DB: db.db });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.productSlugs, ["industrial-color-concentrate"]);
+    assert.deepEqual(result.questions, ["What substrate will be printed?"]);
+    assert.equal(result.status, "review_required");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("protects SEO publishing and user administration by role", async () => {
   const seo = { path: "/products", locale: "en", status: "published", title: "Verified product catalog", description: "Verified product catalog metadata for industrial buyers.", keywords: [" printing inks ", "printing inks"] };
   const adminSeoDb = createD1Mock();

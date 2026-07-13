@@ -268,7 +268,9 @@ The selection assistant at `/en/assistant` and `/zh/assistant` is deliberately
 fail-closed. A connected service may return a summary, verified product slugs,
 and clarification questions, but the public UI always requires human review and
 does not treat model output as a quotation, specification, or technical
-commitment.
+commitment. Candidate slugs are deduplicated and resolved again through the
+current public product graph before the API returns them; unknown, archived,
+unpublished, and unverified products never reach the public response.
 
 The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
 `area`, `company`, `country`, `quantity`, `unit`, `requirement`, optional

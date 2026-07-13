@@ -355,6 +355,20 @@ final result: passed
   stayed reachable with `scrollWidth == clientWidth` at every size. Lint,
   TypeScript, production build, and all 30 rendered/API tests passed.
 
+## 2026-07-13 verified AI recommendation boundary
+
+- Connected assistant output now treats returned product slugs as untrusted
+  candidates. The Worker normalizes their syntax, removes duplicates, limits
+  the candidate count, and resolves every slug against the current published
+  and verified product graph before returning a public response.
+- Automated API QA supplied one current seeded product, a duplicate, an
+  archived seeded product, an unknown slug, and an invalid slug. Only the one
+  current product remained in the response; clarification questions and the
+  mandatory `review_required` state were preserved.
+- The external assistant endpoint remains optional and fail-closed. No endpoint,
+  model, credentials, or fabricated technical recommendation was introduced.
+  Lint, TypeScript, production build, and all 31 tests passed.
+
 ## 2026-07-13 governed seed-content withdrawal
 
 - Product, category, application, and article seed fallbacks now follow CMS

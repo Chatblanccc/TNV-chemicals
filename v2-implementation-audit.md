@@ -243,6 +243,9 @@ trace remains an explicit launch check.
 - Connected output is constrained to summary, existing product slugs, and
   clarification questions. Public copy requires human review and states that
   model output is not a quotation or technical commitment.
+- Returned product candidates are deduplicated and resolved server-side against
+  the current public content graph. Unknown, archived, unpublished, or
+  unverified slugs are removed even if a connected service returns them.
 
 ## 12. Roles and permissions
 
