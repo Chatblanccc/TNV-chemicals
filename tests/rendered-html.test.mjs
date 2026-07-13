@@ -311,12 +311,23 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(invalidMoq.status, 400);
   assert.deepEqual(await invalidMoq.json(), { error: "MOQ values must be short verified text" });
 
-  const applicationDb = createD1Mock();
-  const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"], relatedProducts: ["verified-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
+  const invalidProductCategory = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "invalid-category-product", category: "Printing Inks" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidProductCategory.status, 400);
+  assert.deepEqual(await invalidProductCategory.json(), { error: "Product category must use a lowercase, hyphenated slug" });
+
+  const applicationDb = createD1Mock([], sql => sql.includes("FROM cms_products") ? { id: "verified-product", slug: "verified-product", category: "printing-inks", status: "published", verificationStatus: "verified" } : null);
+  const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"], relatedProducts: ["verified-product", "verified-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
   assert.equal(application.status, 201);
   assert.ok(applicationDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_applications")));
   const applicationInsert = applicationDb.executed.find(statement => statement.sql.includes("INSERT INTO cms_applications"));
   assert.ok(applicationInsert.args.some(value => typeof value === "string" && value.includes('"relatedProducts":["verified-product"]')));
+
+  const unavailableApplicationRelation = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "unavailable-application-relation", status: "published", verificationStatus: "verified", data: { nameEn: "Unavailable relationship", introEn: "Relationship validation", relatedProducts: ["unknown-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unavailableApplicationRelation.status, 400);
+  assert.deepEqual(await unavailableApplicationRelation.json(), { error: "Related products must be published and verified before this content can be published: unknown-product" });
+
+  const draftApplicationRelation = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "draft-application-relation", status: "draft", verificationStatus: "pending", data: { nameEn: "Draft relationship", introEn: "Draft relationship preparation", relatedProducts: ["future-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(draftApplicationRelation.status, 201);
 
   const invalidRelationship = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "invalid-relationship", status: "draft", verificationStatus: "pending", data: { nameEn: "Draft application", introEn: "Draft application introduction", relatedProducts: ["Not a slug"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(invalidRelationship.status, 400);
@@ -331,6 +342,22 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   const invalidArticleCover = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "invalid-cover", category: "technical-guides", status: "draft", verificationStatus: "pending", data: { titleEn: "Draft article", summaryEn: "Draft summary", coverMediaKey: "unregistered-image" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(invalidArticleCover.status, 400);
   assert.deepEqual(await invalidArticleCover.json(), { error: "Article cover must reference a registered media key" });
+
+  const relatedArticleDb = createD1Mock([], sql => sql.includes("FROM cms_products") || sql.includes("FROM cms_applications") ? null : null);
+  const relatedArticle = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "related-article", category: "technical-guides", status: "published", verificationStatus: "verified", data: { titleEn: "Related article", summaryEn: "Verified relationship article", relatedProducts: ["water-based-flexographic-ink"], relatedApplications: ["flexible-packaging"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: relatedArticleDb.db });
+  assert.equal(relatedArticle.status, 201);
+
+  const unavailableArticleProduct = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "unavailable-article-product", category: "technical-guides", status: "published", verificationStatus: "verified", data: { titleEn: "Unavailable article product", summaryEn: "Relationship validation", relatedProducts: ["unknown-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unavailableArticleProduct.status, 400);
+
+  const archivedApplicationDb = createD1Mock([], sql => sql.includes("FROM cms_applications") ? { id: "archived-application", slug: "flexible-packaging", status: "archived", verificationStatus: "verified" } : null);
+  const unavailableArticleApplication = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "unavailable-article-application", category: "technical-guides", status: "published", verificationStatus: "verified", data: { titleEn: "Unavailable article application", summaryEn: "Relationship validation", relatedApplications: ["flexible-packaging"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: archivedApplicationDb.db });
+  assert.equal(unavailableArticleApplication.status, 400);
+  assert.deepEqual(await unavailableArticleApplication.json(), { error: "Related applications must be published and verified before this article can be published: flexible-packaging" });
+
+  const invalidArticleApplicationSlug = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "invalid-article-application", category: "technical-guides", status: "draft", verificationStatus: "pending", data: { titleEn: "Invalid relation", summaryEn: "Invalid relation", relatedApplications: ["Not a slug"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidArticleApplicationSlug.status, 400);
+  assert.deepEqual(await invalidArticleApplicationSlug.json(), { error: "Related applications must be a list of valid application slugs" });
 
   const categoryDb = createD1Mock();
   const category = await request("/api/admin/content/categories", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-category", status: "published", verificationStatus: "verified", data: { nameEn: "Verified category", descriptionEn: "Verified category description" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: categoryDb.db });
@@ -416,6 +443,12 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(renamedProduct.status, 400);
   assert.deepEqual(await renamedProduct.json(), { error: "Published route slugs are immutable; create a new record and configure a redirect before changing a public URL" });
   assert.equal(immutableSlugDb.executed.some(statement => statement.sql.includes("UPDATE cms_products")), false);
+
+  const immutableCategoryDb = createD1Mock([], { slug: product.slug, status: "published", category: product.category });
+  const recategorizedProduct = await request("/api/admin/content/products/product-id", { method: "PATCH", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, category: "colorants" }) }, { ADMIN_EMAILS: "admin@example.com", DB: immutableCategoryDb.db });
+  assert.equal(recategorizedProduct.status, 400);
+  assert.deepEqual(await recategorizedProduct.json(), { error: "Product route categories are immutable; create a governed redirect before changing the canonical product URL" });
+  assert.equal(immutableCategoryDb.executed.some(statement => statement.sql.includes("UPDATE cms_products")), false);
 
   const editorDb = createD1Mock([], { role: "editor", active: 1 });
   const editorPublish = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(product) }, { DB: editorDb.db });

@@ -299,6 +299,32 @@ final result: passed
   application runtime warning or error. Lint, TypeScript checking, production
   build, and all 29 tests passed before final handoff.
 
+## 2026-07-13 canonical product routes and content relationship integrity
+
+- Product category values now use lowercase hyphenated slugs and lock after
+  record creation alongside the product slug. Both fields identify the
+  canonical `/products/{category}/{slug}` route, so the API rejects category
+  mutation until a governed redirect workflow exists.
+- Application and article drafts may prepare future relationships. Publishing
+  now resolves every related product and application against the current public
+  content graph and rejects missing, archived, unpublished, or unverified
+  targets. Repeated relationship slugs are normalized before D1 storage.
+- The content editor explains the draft-versus-publication rule. Saved product
+  category fields are read-only and include canonical-route guidance; article
+  and application relationship fields state the verified-public requirement.
+- Real local D1/API QA created a draft product, a published application linked
+  to the seeded flexographic-ink product, and a published article linked to both
+  that product and application. Category mutation and two unknown relationships
+  returned HTTP 400. The public pages rendered the expected canonical links,
+  and D1 stored each repeated relationship once.
+- The application editor and both public relationship pages were checked at
+  1440, 1024, 768, 390, and 360 CSS pixels. Guidance and relationship fields
+  remained reachable, expected links remained present, and
+  `scrollWidth == clientWidth` at every size.
+- All local fixtures and their audit events were deleted after QA; both fixture
+  routes then returned 404. Lint, direct TypeScript checking, production build,
+  and all 29 rendered/API tests passed.
+
 ## 2026-07-13 governed seed-content withdrawal
 
 - Product, category, application, and article seed fallbacks now follow CMS

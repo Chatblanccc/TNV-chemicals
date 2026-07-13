@@ -193,22 +193,29 @@ object remain available to the governed retention process. Missing files keep
 an explicit pending or batch-confirmation state.
 The PRD-compatible `/products/{slug}` shortcut permanently redirects to the
 canonical `/products/{category}/{slug}` route, preserving the established URL
-structure without creating duplicate indexable pages.
+structure without creating duplicate indexable pages. Product slugs and
+categories lock after creation because both identify the canonical route;
+changing either requires a new governed record and an explicit redirect.
 
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add
 a dynamic `/applications/{slug}` route; an explicit unpublish or archive keeps
 that route withdrawn instead of reviving its seed fallback.
 Application editors maintain an explicit list of related published product
-slugs. Public pages resolve only matching products; a missing, archived, or
-unpublished product remains hidden, and an empty verified relationship renders
-an inquiry handoff instead of an inferred recommendation.
+slugs. Drafts may prepare future relationships, while publication is rejected
+unless every referenced product currently resolves as published and verified.
+Duplicate slugs are normalized before storage. Public pages resolve only
+matching products; a missing, archived, or unpublished product remains hidden,
+and an empty verified relationship renders an inquiry handoff instead of an
+inferred recommendation.
 
 Articles support bilingual titles, summaries, bodies, author names, explicit
 publication dates, related content, checklists, FAQs, and a cover selected only
 from media registered in `app/media.ts`. Missing authors or covers are omitted
 rather than inferred; published values flow into the visible byline, Open Graph,
-Twitter, and Article structured data.
+Twitter, and Article structured data. Article drafts can stage product and
+application links, but publishing requires every relationship to resolve to
+current published, verified content; duplicate relationships are normalized.
 
 ## Search, SEO, GEO, and localization
 

@@ -43,8 +43,9 @@ Status meanings:
   governed row is not public. Withdrawn products leave catalogs, search,
   document relationships, sitemap output, and their detail route, which returns
   404 rather than a generic fallback page.
-- Slugs are immutable after record creation. Route changes require a new record
-  and a governed redirect, preventing untracked public URL loss.
+- Product slugs and categories are immutable after record creation because both
+  identify the canonical route. Route changes require a new record and a
+  governed redirect, preventing untracked public URL loss.
 - Categories have independent bilingual copy, verification, publication,
   translation, and audit states; verified labels are applied to every product
   in that category without changing its public route.
@@ -64,9 +65,11 @@ must be approved by TNV before launch.
 - Verified records merge by slug and create dynamic `/applications/{slug}`
   routes, sitemap entries, search results, homepage paths, and article-related
   links.
-- Application editors govern related product slugs. Verified application pages
-  resolve only currently public product records and expose an honest inquiry
-  handoff when no verified relationship has been published.
+- Application editors govern related product slugs. Drafts may stage future
+  links; publication requires every referenced product to be currently
+  published and verified, and duplicate slugs are normalized. Verified
+  application pages resolve only current public product records and expose an
+  honest inquiry handoff when no verified relationship has been published.
 - Existing application routes remain available through the seed fallback until
   the matching CMS lifecycle explicitly takes ownership; archived or
   unpublished governed applications do not silently reappear.
@@ -80,6 +83,9 @@ must be approved by TNV before launch.
   related products, and related applications.
 - Article CMS with review and verification gating, verified author, explicit
   publication date, and registered-media cover fields.
+- Article drafts may stage related products and applications. Publication is
+  rejected unless every relationship resolves to current published, verified
+  content; repeated slugs are normalized before storage.
 - Unique metadata with governed page-level overrides in `seo_metadata`.
 - Canonical, English/Chinese `hreflang`, Open Graph, Twitter image, Article,
   FAQPage, BreadcrumbList, Product, Organization, and WebPage structured data.

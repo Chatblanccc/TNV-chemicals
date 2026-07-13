@@ -419,6 +419,7 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) return "Content data is required";
   if (input.status === "published" && input.verificationStatus !== "verified") return "Only verified content can be published";
   if (type === "products" && (!input.code?.trim() || !input.category?.trim() || typeof input.data.nameEn !== "string" || typeof input.data.useEn !== "string")) return "Product code, category, English name and use are required";
+  if (type === "products" && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.category || "")) return "Product category must use a lowercase, hyphenated slug";
   if (type === "products" && typeof input.data.casNumber === "string" && input.data.casNumber && !/^[0-9]{2,7}-[0-9]{2}-[0-9]$/.test(input.data.casNumber)) return "CAS number must use the standard hyphenated format";
   if (type === "products" && [input.data.moqEn, input.data.moqZh].some(value => value !== undefined && (typeof value !== "string" || value.length > 300))) return "MOQ values must be short verified text";
   if (type === "categories" && typeof input.data.nameEn !== "string") return "Category English name is required";
@@ -429,6 +430,9 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "applications" && (typeof input.data.nameEn !== "string" || typeof input.data.introEn !== "string")) return "Application English name and introduction are required";
   if (type === "applications" && input.data.relatedProducts !== undefined && (!Array.isArray(input.data.relatedProducts) || input.data.relatedProducts.length > 50 || input.data.relatedProducts.some(value => typeof value !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)))) return "Related products must be a list of valid product slugs";
   if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
+  if (type === "articles" && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.category || "")) return "Article category must use a lowercase, hyphenated slug";
+  if (type === "articles" && input.data.relatedProducts !== undefined && (!Array.isArray(input.data.relatedProducts) || input.data.relatedProducts.length > 50 || input.data.relatedProducts.some(value => typeof value !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)))) return "Related products must be a list of valid product slugs";
+  if (type === "articles" && input.data.relatedApplications !== undefined && (!Array.isArray(input.data.relatedApplications) || input.data.relatedApplications.length > 50 || input.data.relatedApplications.some(value => typeof value !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)))) return "Related applications must be a list of valid application slugs";
   if (type === "articles" && typeof input.data.publishDate === "string" && input.data.publishDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.data.publishDate)) return "Publication date must use YYYY-MM-DD";
   if (type === "articles" && typeof input.data.coverMediaKey === "string" && input.data.coverMediaKey && !articleCoverMediaKeys.includes(input.data.coverMediaKey as typeof articleCoverMediaKeys[number])) return "Article cover must reference a registered media key";
   if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string" || !input.data.nameEn.trim())) return "Certificate type and English name are required";
@@ -443,6 +447,15 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "downloads" && input.status === "published" && productDocumentTypes.has(input.type || "") && !input.data.productSlug) return "Published TDS, SDS and COA files must link to a product";
   if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeDocumentUrl(input.data.fileUrl)) return "A verified HTTPS or uploaded PDF URL is required before publication";
   return null;
+}
+
+function normalizedContentData(type: ContentType, data: Record<string, unknown>) {
+  const normalized = { ...data };
+  if (type === "applications" || type === "articles") {
+    if (Array.isArray(data.relatedProducts)) normalized.relatedProducts = Array.from(new Set(data.relatedProducts));
+  }
+  if (type === "articles" && Array.isArray(data.relatedApplications)) normalized.relatedApplications = Array.from(new Set(data.relatedApplications));
+  return normalized;
 }
 
 type ManagedRouteRow = { id: string; slug: string; status: ContentStatus; verificationStatus: VerificationStatus; category?: string };
@@ -465,6 +478,17 @@ async function isPublicApplication(applicationSlug: string, env: Env) {
   const row = await env.DB.prepare("SELECT id, slug, status, verification_status AS verificationStatus FROM cms_applications WHERE slug = ? LIMIT 1").bind(applicationSlug).first<ManagedRouteRow>();
   if (row?.status === "published" && row.verificationStatus === "verified") return true;
   return seedApplicationSlugs.has(applicationSlug) && (!row || !await cmsOwnsSeedLifecycle("application", row, env));
+}
+
+async function validatePublishedContentRelationships(type: ContentType, input: ContentInput, env: Env): Promise<string | null> {
+  if (input.status !== "published" || !input.data) return null;
+  const relatedProducts = (type === "applications" || type === "articles") && Array.isArray(input.data.relatedProducts) ? Array.from(new Set(input.data.relatedProducts as string[])) : [];
+  const unavailableProducts = (await Promise.all(relatedProducts.map(async slug => [slug, await resolvePublicProduct(slug, env)] as const))).filter(([, product]) => !product).map(([slug]) => slug);
+  if (unavailableProducts.length) return `Related products must be published and verified before this content can be published: ${unavailableProducts.join(", ")}`;
+  const relatedApplications = type === "articles" && Array.isArray(input.data.relatedApplications) ? Array.from(new Set(input.data.relatedApplications as string[])) : [];
+  const unavailableApplications = (await Promise.all(relatedApplications.map(async slug => [slug, await isPublicApplication(slug, env)] as const))).filter(([, application]) => !application).map(([slug]) => slug);
+  if (unavailableApplications.length) return `Related applications must be published and verified before this article can be published: ${unavailableApplications.join(", ")}`;
+  return null;
 }
 
 async function resolvePublicArticle(articleSlug: string, env: Env): Promise<{ category: string } | null> {
@@ -549,10 +573,16 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
         if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
       } catch (relationshipError) { return storageError(relationshipError); }
     }
+    if (type === "applications" || type === "articles") {
+      try {
+        const relationshipError = await validatePublishedContentRelationships(type, input, env);
+        if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
+      } catch (relationshipError) { return storageError(relationshipError); }
+    }
     const id = crypto.randomUUID();
     const now = Date.now();
     const publishedAt = input.status === "published" ? now : null;
-    const dataJson = JSON.stringify(input.data);
+    const dataJson = JSON.stringify(normalizedContentData(type, input.data!));
     const eventAction = input.status === "published" ? "published" : "created";
     const insert = type === "products"
       ? env.DB.prepare("INSERT INTO cms_products (id, slug, code, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
@@ -580,16 +610,22 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     if (error) return Response.json({ error }, { status: 400 });
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
     try {
-      const current = await env.DB.prepare(`SELECT slug, status FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ slug: string; status: ContentStatus }>();
+      const currentColumns = type === "products" ? "slug, status, category" : "slug, status";
+      const current = await env.DB.prepare(`SELECT ${currentColumns} FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ slug: string; status: ContentStatus; category?: string }>();
       if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
       if (current.slug !== input.slug) return Response.json({ error: "Published route slugs are immutable; create a new record and configure a redirect before changing a public URL" }, { status: 400 });
+      if (type === "products" && current.category !== input.category) return Response.json({ error: "Product route categories are immutable; create a governed redirect before changing the canonical product URL" }, { status: 400 });
       if (type === "downloads") {
         const relationshipError = await validatePublishedDownloadRelationship(input, env, recordId);
         if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
       }
+      if (type === "applications" || type === "articles") {
+        const relationshipError = await validatePublishedContentRelationships(type, input, env);
+        if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
+      }
       const now = Date.now();
       const publishedAt = input.status === "published" ? now : null;
-      const dataJson = JSON.stringify(input.data);
+      const dataJson = JSON.stringify(normalizedContentData(type, input.data!));
       const update = type === "products"
         ? env.DB.prepare("UPDATE cms_products SET slug = ?, code = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
         : type === "categories"
