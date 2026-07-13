@@ -69,6 +69,7 @@ The side-by-side input compares the selected Material Atlas visual target and th
 
 ## Remaining P3 follow-up polish
 
+- The decorative hero caption was removed after review; the corrugated-material image now occupies the full remaining atlas height at desktop, tablet, and mobile breakpoints.
 - The pre-launch review strip intentionally remains above the selected mock's header so unverified facts are not mistaken for production claims.
 - Replace generated placeholder photography with original TNV facility, sample, and press imagery after company review.
 - Re-run contrast, screen-reader, 200% zoom, and translation-length testing after final bilingual content is supplied.
