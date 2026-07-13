@@ -122,6 +122,15 @@ final result: passed
 
 ## 2026-07-13 V2 platform completion pass
 
+- Added the expansion-language editor as a bordered editorial continuation of
+  the selected source record. It reuses existing form controls and tokens,
+  exposes loading/error/success/publishing states, and applies RTL direction to
+  Arabic records without introducing a separate dashboard visual language.
+- Verified the translation lifecycle against the real local D1 store: a clearly
+  labelled local category source was created, an Arabic record entered review,
+  the translation was archived, and the parent was archived. A missing local
+  category migration surfaced during this check and was applied before the
+  successful rerun; no fixture remains published.
 - Added the governed company-profile editor inside the existing editorial
   workspace and reused the public definition-list layout. No new dashboard,
   card wall, or unsupported company claim was introduced.

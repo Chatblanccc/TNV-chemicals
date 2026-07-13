@@ -146,6 +146,9 @@ with the actual company owner before launch.
 - Locale registry: English, Chinese, Spanish, Arabic (RTL), and Russian.
 - Independent `content_translations` records have their own review,
   verification, publication, audit, and uniqueness rules.
+- The content workspace exposes a structured translation editor for Spanish,
+  Arabic, and Russian after an operator selects a saved source record; Arabic
+  editing declares RTL direction while the JSON structure remains readable.
 - Product, application, article, certificate, download, document-language, and
   SEO administration support all planned content locales.
 - English and Chinese remain the only public route locales until each additional

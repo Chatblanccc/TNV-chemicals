@@ -27,7 +27,7 @@ type InquiryStatus = typeof inquiryStatuses[number];
 function storageError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "Unknown storage error";
   const unavailable = message.includes("no such table") || message.includes("D1_ERROR");
-  return Response.json({ error: unavailable ? "Inquiry storage is not ready" : "Inquiry storage failed" }, { status: 503 });
+  return Response.json({ error: unavailable ? "Persistent storage is not ready" : "Persistent storage failed" }, { status: 503 });
 }
 
 type AdminRole = "admin" | "marketing" | "sales" | "editor";

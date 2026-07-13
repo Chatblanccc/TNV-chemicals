@@ -289,6 +289,15 @@ test("supports independently reviewed translations for planned locales", async (
   const created = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(translation) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
   assert.equal(created.status, 201);
   assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_translations")));
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_events")));
+
+  const arabicDb = createD1Mock();
+  const arabic = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ entityType: "company_profile", entityId: "company-id", locale: "ar", status: "review", verificationStatus: "pending", data: { legalName: "Arabic review copy" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: arabicDb.db });
+  assert.equal(arabic.status, 201);
+  assert.ok(arabicDb.executed.some(statement => statement.sql.includes("SELECT id FROM company_profiles")));
+
+  const unverifiedPublish = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...translation, locale: "ru", verificationStatus: "pending" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(unverifiedPublish.status, 400);
 
   const editor = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(translation) }, { DB: createD1Mock([], { role: "editor", active: 1 }).db });
   assert.equal(editor.status, 403);
@@ -350,6 +359,8 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.match(cmsHtml, /<button type="button">categories<\/button>/i);
   assert.match(cmsHtml, /<button type="button">company-profiles<\/button>/i);
   assert.match(cmsHtml, /<button type="button">applications<\/button>/i);
+  assert.match(cmsHtml, /Expansion-language review/i);
+  assert.match(cmsHtml, /Spanish, Arabic and Russian versions/i);
 
   const seoWorkspace = await request("/en/admin/seo");
   const seoHtml = await seoWorkspace.text();

@@ -190,7 +190,10 @@ a dynamic `/applications/{slug}` route without removing any existing route.
   robots rules form the SEO/GEO boundary.
 - English and Chinese are active public locales. English, Chinese, Spanish,
   Arabic, and Russian are supported as independently reviewed CMS translation
-  records and SEO locales. A locale should become public only after its
+  records and SEO locales. Selecting a saved CMS record opens the expansion-
+  language editor for structured Spanish, Arabic, and Russian content with
+  independent draft, verification, and publication states. A locale should
+  become public only after its
   navigation, legal copy, content coverage, RTL behavior where applicable, and
   QA are complete.
 

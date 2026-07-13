@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { contentLocales, localeRegistry } from "./locales";
+import { AdminTranslations, type TranslatableEntity } from "./admin-translations";
 
 type Locale = "en" | "zh";
 type ContentType = "products" | "categories" | "company-profiles" | "applications" | "articles" | "certificates" | "downloads";
@@ -19,6 +20,7 @@ type FormState = {
 };
 
 const contentTypes: ContentType[] = ["products", "categories", "company-profiles", "applications", "articles", "certificates", "downloads"];
+const translationEntity: Record<ContentType, TranslatableEntity> = { products: "product", categories: "category", "company-profiles": "company_profile", applications: "application", articles: "article", certificates: "certificate", downloads: "download" };
 const emptyForm = (type: ContentType): FormState => ({ slug: type === "company-profiles" ? "tnv-chemicals" : "", code: "", casNumber: "", formula: "", molecularWeight: "", purity: "", appearance: "", packagingEn: "", packagingZh: "", applications: "", applicationsZh: "", category: type === "articles" ? "technical-guides" : "printing-inks", type: type === "downloads" ? "tds" : "", status: "draft", verificationStatus: "pending", nameEn: "", nameZh: "", useEn: "", useZh: "", summaryEn: "", summaryZh: "", bodyEn: "", bodyZh: "", benefits: "", benefitsZh: "", specs: "", specsZh: "", relatedProducts: "", relatedApplications: "", articleTypeEn: "Technical article", articleTypeZh: "技术文章", sectionHeadingEn: "Overview", sectionHeadingZh: "概览", checklist: "", checklistZh: "", faq: "", faqZh: "", descriptionEn: "", descriptionZh: "", fileUrl: "", productSlug: "", documentLocale: "en", issuedDate: "", expiresDate: "", businessTypeEn: "", businessTypeZh: "", manufacturingEn: "", manufacturingZh: "", exportMarkets: "", exportMarketsZh: "", addressEn: "", addressZh: "", contactEmail: "", contactPhone: "", websiteUrl: "" });
 const text = (value: unknown) => typeof value === "string" ? value : "";
 const lines = (value: unknown) => Array.isArray(value) ? value.filter(item => typeof item === "string").join("\n") : "";
@@ -107,5 +109,6 @@ export function AdminContent({ locale }: { locale: Locale }) {
         <div className="editor-actions"><button className="button button-dark" type="submit" disabled={saving}>{saving ? (locale === "zh" ? "正在保存…" : "Saving…") : copy.save}</button>{selectedId && <button className="text-button" type="button" disabled={saving} onClick={() => void archive()}>{copy.archive}</button>}</div>
       </form>
     </div>
+    {selectedId ? <AdminTranslations key={`${translationEntity[type]}-${selectedId}`} entityType={translationEntity[type]} entityId={selectedId} interfaceLocale={locale}/> : <section className="translation-workspace translation-empty" aria-labelledby="translation-empty-heading"><div><span className="eyebrow">{locale === "zh" ? "独立语言记录" : "INDEPENDENT LOCALE RECORDS"}</span><h2 id="translation-empty-heading">{locale === "zh" ? "扩展语言审核" : "Expansion-language review"}</h2></div><p>{locale === "zh" ? "先保存或选择一条内容记录，再维护西班牙语、阿拉伯语和俄语版本。" : "Save or select a content record before maintaining its Spanish, Arabic and Russian versions."}</p></section>}
   </section>;
 }
