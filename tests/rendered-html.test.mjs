@@ -276,18 +276,22 @@ test("renders the inquiry workspace as a private, non-indexable route", async ()
 });
 
 test("enforces verification and RBAC across CMS content writes", async () => {
-  const product = { slug: "verified-product", code: "VP-01", category: "printing-inks", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product", useEn: "Verified application statement", casNumber: "123-45-6", formula: "C7H8", molecularWeight: "92.14 g/mol", purity: "Verified grade", appearance: "Verified appearance", packagingEn: "Verified package", applications: ["Verified application"] } };
+  const product = { slug: "verified-product", code: "VP-01", category: "printing-inks", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product", useEn: "Verified application statement", casNumber: "123-45-6", formula: "C7H8", molecularWeight: "92.14 g/mol", purity: "Verified grade", appearance: "Verified appearance", packagingEn: "Verified package", moqEn: "Verified order threshold", moqZh: "已核实起订量", applications: ["Verified application"] } };
   const adminDb = createD1Mock();
   const published = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(product) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
   assert.equal(published.status, 201);
   assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_products")));
   assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_events")));
   const productInsert = adminDb.executed.find(statement => statement.sql.includes("INSERT INTO cms_products"));
-  assert.ok(productInsert.args.some(value => typeof value === "string" && value.includes('"formula":"C7H8"') && value.includes('"packagingEn":"Verified package"')));
+  assert.ok(productInsert.args.some(value => typeof value === "string" && value.includes('"formula":"C7H8"') && value.includes('"packagingEn":"Verified package"') && value.includes('"moqEn":"Verified order threshold"')));
 
   const invalidCas = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "invalid-cas-product", data: { ...product.data, casNumber: "not-verified" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(invalidCas.status, 400);
   assert.deepEqual(await invalidCas.json(), { error: "CAS number must use the standard hyphenated format" });
+
+  const invalidMoq = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "invalid-moq-product", data: { ...product.data, moqEn: 500 } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidMoq.status, 400);
+  assert.deepEqual(await invalidMoq.json(), { error: "MOQ values must be short verified text" });
 
   const applicationDb = createD1Mock();
   const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
@@ -439,6 +443,7 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.match(cmsHtml, /Publish product and technical content through review/i);
   assert.match(cmsHtml, /Molecular weight — verified only/i);
   assert.match(cmsHtml, /Packaging — verified only/i);
+  assert.match(cmsHtml, /MOQ — verified only/i);
   assert.match(cmsHtml, /<button type="button">categories<\/button>/i);
   assert.match(cmsHtml, /<button type="button">company-profiles<\/button>/i);
   assert.match(cmsHtml, /<button type="button">applications<\/button>/i);

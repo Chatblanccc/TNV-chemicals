@@ -6,7 +6,7 @@ import { articleCoverMedia, type ArticleCoverMediaKey } from "./media";
 export type PublishedProduct = {
   slug: string; code: string; name: string; nameZh?: string; category: string; categoryName: string; categoryNameZh?: string;
   casNumber?: string; formula?: string; molecularWeight?: string; purity?: string; appearance?: string;
-  description?: string; descriptionZh?: string; use: string; useZh?: string; packaging?: string; packagingZh?: string;
+  description?: string; descriptionZh?: string; use: string; useZh?: string; packaging?: string; packagingZh?: string; moq?: string; moqZh?: string;
   applications?: string[]; applicationsZh?: string[]; benefits: string[]; benefitsZh?: string[]; specs: string[][]; specsZh?: string[][]; verificationStatus?: "pending" | "verified";
 };
 
@@ -80,6 +80,8 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       const appearance = stringValue(data.appearance);
       const packaging = stringValue(en.packaging) || stringValue(data.packagingEn);
       const packagingZh = stringValue(zh.packaging) || stringValue(data.packagingZh);
+      const moq = stringValue(en.moq) || stringValue(data.moqEn);
+      const moqZh = stringValue(zh.moq) || stringValue(data.moqZh);
       const verifiedProperties: Array<[string, string, string]> = [["CAS number", "CAS 号", casNumber], ["Formula", "分子式", formula], ["Molecular weight", "分子量", molecularWeight], ["Purity", "纯度", purity], ["Appearance", "外观", appearance]];
       for (const [labelEn, labelZh, value] of verifiedProperties.reverse()) {
         if (value && !specs.some(([label]) => label.toLowerCase() === labelEn.toLowerCase())) specs.unshift([labelEn, value]);
@@ -87,7 +89,9 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       }
       if (packaging && !specs.some(([label]) => label.toLowerCase() === "packaging")) specs.push(["Packaging", packaging]);
       if ((packagingZh || packaging) && !specsZh.some(([label]) => label === "包装")) specsZh.push(["包装", packagingZh || packaging]);
-      return { slug: row.slug, code: row.code, category: row.category, categoryName: stringValue(en.categoryName) || stringValue(data.categoryNameEn) || titleCase(row.category), categoryNameZh: stringValue(zh.categoryName) || stringValue(data.categoryNameZh), name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), casNumber, formula, molecularWeight, purity, appearance, description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), use: stringValue(en.use) || stringValue(data.useEn), useZh: stringValue(zh.use) || stringValue(data.useZh), packaging, packagingZh, applications: stringArray(en.applications).length ? stringArray(en.applications) : stringArray(data.applications), applicationsZh: stringArray(zh.applications).length ? stringArray(zh.applications) : stringArray(data.applicationsZh), benefits: stringArray(en.benefits).length ? stringArray(en.benefits) : stringArray(data.benefits), benefitsZh: stringArray(zh.benefits).length ? stringArray(zh.benefits) : stringArray(data.benefitsZh), specs, specsZh, verificationStatus: "verified" };
+      if (moq && !specs.some(([label]) => label.toLowerCase() === "moq")) specs.push(["MOQ", moq]);
+      if ((moqZh || moq) && !specsZh.some(([label]) => label === "起订量" || label.toLowerCase() === "moq")) specsZh.push(["起订量", moqZh || moq]);
+      return { slug: row.slug, code: row.code, category: row.category, categoryName: stringValue(en.categoryName) || stringValue(data.categoryNameEn) || titleCase(row.category), categoryNameZh: stringValue(zh.categoryName) || stringValue(data.categoryNameZh), name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), casNumber, formula, molecularWeight, purity, appearance, description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), use: stringValue(en.use) || stringValue(data.useEn), useZh: stringValue(zh.use) || stringValue(data.useZh), packaging, packagingZh, moq, moqZh, applications: stringArray(en.applications).length ? stringArray(en.applications) : stringArray(data.applications), applicationsZh: stringArray(zh.applications).length ? stringArray(zh.applications) : stringArray(data.applicationsZh), benefits: stringArray(en.benefits).length ? stringArray(en.benefits) : stringArray(data.benefits), benefitsZh: stringArray(zh.benefits).length ? stringArray(zh.benefits) : stringArray(data.benefitsZh), specs, specsZh, verificationStatus: "verified" };
     });
     const categoryOverrides: PublishedCategory[] = categoryRows.map(row => {
       const data = objectValue(row.dataJson);

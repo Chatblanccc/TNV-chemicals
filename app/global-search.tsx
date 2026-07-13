@@ -36,7 +36,7 @@ function collectResults(locale: Locale, query: string, content: PublishedSiteCon
     const benefits = locale === "zh" ? product.benefitsZh || product.benefits : product.benefits;
     const productApplications = locale === "zh" ? product.applicationsZh || product.applications || [] : product.applications || [];
     const specs = locale === "zh" ? product.specsZh || product.specs : product.specs;
-    const score = matchScore(query, [title, product.name, product.nameZh || "", product.code, product.casNumber || "", product.formula || "", product.category, localized(locale, product.categoryName, product.categoryNameZh), description, localized(locale, product.description || "", product.descriptionZh), localized(locale, product.packaging || "", product.packagingZh), ...productApplications, ...benefits, ...specs.flat()], [product.code, product.casNumber || ""]);
+    const score = matchScore(query, [title, product.name, product.nameZh || "", product.code, product.casNumber || "", product.formula || "", product.category, localized(locale, product.categoryName, product.categoryNameZh), description, localized(locale, product.description || "", product.descriptionZh), localized(locale, product.packaging || "", product.packagingZh), localized(locale, product.moq || "", product.moqZh), ...productApplications, ...benefits, ...specs.flat()], [product.code, product.casNumber || ""]);
     if (score) results.push({ key: `product-${product.slug}`, type: "product", title, description, meta: [product.code, product.casNumber ? `CAS ${product.casNumber}` : ""].filter(Boolean).join(" · "), href: localizedPath(locale, `/products/${product.category}/${product.slug}`), score });
   }
   for (const application of content.applications) {

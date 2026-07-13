@@ -231,3 +231,22 @@ final result: passed
   QA was archived after verification.
 - Automated acceptance: lint passed, TypeScript passed, production build
   passed, and all 28 rendered/API tests passed.
+
+## 2026-07-13 governed product MOQ
+
+- Added independent verified-only English and Chinese MOQ fields to the product
+  editor and expansion-language translation template. Blank fields remain
+  omitted rather than receiving a guessed order threshold.
+- Verified MOQ is deduplicated into the public technical overview, indexed by
+  global search, and emitted through locale-aware Product structured data.
+- Fixed the Chinese Product JSON-LD path so reviewed Chinese specification names
+  and values are used instead of English source values when available.
+- Browser checks on the product editor at 1440, 1024, 768, 390, and 360 CSS
+  pixels confirmed both MOQ controls are visible and
+  `scrollWidth == clientWidth`, with no browser warnings or errors.
+- A local-only verified product was published through the admin API. Its English
+  and Chinese detail pages rendered the correct MOQ and packaging, the MOQ was
+  discoverable through global search, and both locales exposed the value in
+  Product JSON-LD. The fixture was archived and its route returned 404 after QA.
+- Automated acceptance before browser QA: lint passed, TypeScript passed,
+  production build passed, and all 28 rendered/API tests passed.

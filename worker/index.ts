@@ -400,6 +400,7 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (input.status === "published" && input.verificationStatus !== "verified") return "Only verified content can be published";
   if (type === "products" && (!input.code?.trim() || !input.category?.trim() || typeof input.data.nameEn !== "string" || typeof input.data.useEn !== "string")) return "Product code, category, English name and use are required";
   if (type === "products" && typeof input.data.casNumber === "string" && input.data.casNumber && !/^[0-9]{2,7}-[0-9]{2}-[0-9]$/.test(input.data.casNumber)) return "CAS number must use the standard hyphenated format";
+  if (type === "products" && [input.data.moqEn, input.data.moqZh].some(value => value !== undefined && (typeof value !== "string" || value.length > 300))) return "MOQ values must be short verified text";
   if (type === "categories" && typeof input.data.nameEn !== "string") return "Category English name is required";
   if (type === "company-profiles" && input.slug !== "tnv-chemicals") return "The governed company profile must use the canonical tnv-chemicals slug";
   if (type === "company-profiles" && typeof input.data.legalNameEn !== "string") return "Verified English legal entity name is required";

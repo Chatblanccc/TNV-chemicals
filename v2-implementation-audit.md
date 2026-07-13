@@ -24,14 +24,16 @@ Status meanings:
   `app/admin-content.tsx`.
 - Fields: slug, code, category, bilingual name/description/use, verified CAS,
   formula, molecular weight, purity, appearance, bilingual applications,
-  benefits, packaging, structured specifications, and document linkage.
+  benefits, packaging, MOQ, structured specifications, and document linkage.
 - Public routes preserve the existing `/products/{category}/{slug}` structure;
   verified dynamic products can be added without removing seeded routes.
 - The PRD's `/products/{slug}` form is supported as a permanent shortcut to
   the category-qualified canonical URL, avoiding duplicate indexable pages.
-- Product metadata, Product JSON-LD, breadcrumbs, inquiry handoff, application
+- Product metadata, locale-aware Product JSON-LD, breadcrumbs, inquiry handoff, application
   qualification, and explicit verification state are rendered in
   `app/[...slug]/page.tsx` and `app/site-page.tsx`.
+- Verified MOQ is a first-class bilingual field, is deduplicated into the public
+  technical table, participates in global search, and reaches Product JSON-LD.
 - Only `published + verified` CMS rows reach public output through
   `app/published-content.ts`.
 - Categories have independent bilingual copy, verification, publication,

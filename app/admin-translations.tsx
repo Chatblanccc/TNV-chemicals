@@ -20,7 +20,7 @@ type TranslationRecord = {
 const plannedLocales = contentLocales.filter(locale => !localeRegistry[locale].active);
 
 const templates: Record<TranslatableEntity, Record<string, unknown>> = {
-  product: { name: "", description: "", use: "", packaging: "", applications: [], benefits: [], specs: [] },
+  product: { name: "", description: "", use: "", packaging: "", moq: "", applications: [], benefits: [], specs: [] },
   category: { name: "", description: "" },
   company_profile: { legalName: "", businessType: "", manufacturingCapability: "", exportMarkets: [], address: "" },
   application: { name: "", intro: "", challenges: [] },

@@ -168,7 +168,10 @@ sitemap discovery.
 
 Products support verified CAS number, formula, molecular weight, purity,
 appearance, descriptions, intended uses, applications, benefits, packaging,
-structured specifications, and product-linked downloads. Empty identity fields
+bilingual MOQ, structured specifications, and product-linked downloads. The
+first-class packaging and MOQ fields are merged into the public technical table,
+locale-aware Product structured data, and global search without duplicating a
+manually entered specification. Empty identity fields
 are omitted rather than guessed. Published TDS, SDS, and COA records appear on
 their product page only when the file record is both verified and published;
 otherwise the page keeps an explicit pending or batch-confirmation state.
