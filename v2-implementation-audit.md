@@ -72,14 +72,18 @@ New articles should be published through the existing verified editorial flow.
 
 ## 4. GEO and AI-search readability
 
-**Status: Implemented; company facts still require sources.**
+**Status: Implemented; company facts still require source evidence and review.**
 
-- `/company-profile` exposes a single attributable company knowledge record.
+- `company_profiles` provides a governed, auditable company knowledge record
+  with draft, review, verification, publication, translation, and archive states.
+- `/company-profile` reads only a `published + verified` record and can expose
+  legal identity, business type, manufacturing statement, export markets,
+  address, email, phone, and official HTTPS website.
 - Unknown legal entity, manufacturing, export market, certificate, address,
   email, and phone values remain visibly pending.
 - `public/llms.txt` describes public routes and the site's truth boundary.
-- Organization and page structured data use only the public TNV brand and
-  source-backed content.
+- Organization structured data adds governed company fields only after the
+  company record is both verified and published; absent fields are omitted.
 
 ## 5. Inquiry and CRM
 

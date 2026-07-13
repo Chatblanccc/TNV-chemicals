@@ -286,7 +286,7 @@ async function handleAdminInquiries(request: Request, env: Env): Promise<Respons
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: match ? "PATCH" : "GET" } });
 }
 
-const contentTypes = ["products", "categories", "applications", "articles", "certificates", "downloads"] as const;
+const contentTypes = ["products", "categories", "company-profiles", "applications", "articles", "certificates", "downloads"] as const;
 type ContentType = typeof contentTypes[number];
 type ContentStatus = "draft" | "review" | "published" | "archived";
 type VerificationStatus = "pending" | "verified" | "rejected";
@@ -300,9 +300,10 @@ type ContentInput = {
   data?: Record<string, unknown>;
 };
 
-const contentConfig: Record<ContentType, { table: string; entity: "product" | "category" | "application" | "article" | "certificate" | "download" }> = {
+const contentConfig: Record<ContentType, { table: string; entity: "product" | "category" | "company_profile" | "application" | "article" | "certificate" | "download" }> = {
   products: { table: "cms_products", entity: "product" },
   categories: { table: "cms_categories", entity: "category" },
+  "company-profiles": { table: "company_profiles", entity: "company_profile" },
   applications: { table: "cms_applications", entity: "application" },
   articles: { table: "cms_articles", entity: "article" },
   certificates: { table: "certificates", entity: "certificate" },
@@ -337,6 +338,10 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "products" && (!input.code?.trim() || !input.category?.trim() || typeof input.data.nameEn !== "string" || typeof input.data.useEn !== "string")) return "Product code, category, English name and use are required";
   if (type === "products" && typeof input.data.casNumber === "string" && input.data.casNumber && !/^[0-9]{2,7}-[0-9]{2}-[0-9]$/.test(input.data.casNumber)) return "CAS number must use the standard hyphenated format";
   if (type === "categories" && typeof input.data.nameEn !== "string") return "Category English name is required";
+  if (type === "company-profiles" && input.slug !== "tnv-chemicals") return "The governed company profile must use the canonical tnv-chemicals slug";
+  if (type === "company-profiles" && typeof input.data.legalNameEn !== "string") return "Verified English legal entity name is required";
+  if (type === "company-profiles" && typeof input.data.email === "string" && input.data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.data.email)) return "Use a valid verified contact email";
+  if (type === "company-profiles" && typeof input.data.websiteUrl === "string" && input.data.websiteUrl && !isSafeFileUrl(input.data.websiteUrl)) return "The verified website URL must use HTTPS";
   if (type === "applications" && (typeof input.data.nameEn !== "string" || typeof input.data.introEn !== "string")) return "Application English name and introduction are required";
   if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
   if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string")) return "Certificate type and English name are required";
@@ -366,7 +371,7 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
   if (request.method === "GET" && !recordId) {
     const status = url.searchParams.get("status") || "";
     if (status && !contentStatuses.includes(status as ContentStatus)) return Response.json({ error: "Invalid content status" }, { status: 400 });
-    const extra = type === "products" ? ", code, category" : type === "articles" ? ", category" : type === "applications" || type === "categories" ? "" : ", type";
+    const extra = type === "products" ? ", code, category" : type === "articles" ? ", category" : type === "applications" || type === "categories" || type === "company-profiles" ? "" : ", type";
     try {
       const result = await env.DB.prepare(`SELECT id, slug, status, verification_status AS verificationStatus, data_json AS dataJson, updated_by AS updatedBy, published_at AS publishedAt, created_at AS createdAt, updated_at AS updatedAt${extra} FROM ${config.table} WHERE (? = '' OR status = ?) ORDER BY updated_at DESC LIMIT 200`).bind(status, status).all<Record<string, unknown>>();
       return Response.json({ type, records: normalizeContentRows(result.results) });
@@ -388,6 +393,8 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
       ? env.DB.prepare("INSERT INTO cms_products (id, slug, code, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
       : type === "categories"
         ? env.DB.prepare("INSERT INTO cms_categories (id, slug, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+        : type === "company-profiles"
+          ? env.DB.prepare("INSERT INTO company_profiles (id, slug, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
         : type === "applications"
           ? env.DB.prepare("INSERT INTO cms_applications (id, slug, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
           : type === "articles"
@@ -417,6 +424,8 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
         ? env.DB.prepare("UPDATE cms_products SET slug = ?, code = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
         : type === "categories"
           ? env.DB.prepare("UPDATE cms_categories SET slug = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+          : type === "company-profiles"
+            ? env.DB.prepare("UPDATE company_profiles SET slug = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
           : type === "applications"
             ? env.DB.prepare("UPDATE cms_applications SET slug = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
             : type === "articles"
@@ -446,7 +455,7 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH, DELETE" : "GET, POST" } });
 }
 
-type TranslationInput = { entityType?: "product" | "category" | "application" | "article" | "certificate" | "download"; entityId?: string; locale?: typeof contentLocales[number]; status?: ContentStatus; verificationStatus?: VerificationStatus; data?: Record<string, unknown> };
+type TranslationInput = { entityType?: "product" | "category" | "company_profile" | "application" | "article" | "certificate" | "download"; entityId?: string; locale?: typeof contentLocales[number]; status?: ContentStatus; verificationStatus?: VerificationStatus; data?: Record<string, unknown> };
 
 async function handleAdminTranslations(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -458,7 +467,7 @@ async function handleAdminTranslations(request: Request, env: Env): Promise<Resp
   if (request.method === "GET" && !recordId) {
     const entityType = url.searchParams.get("entityType") || "";
     const entityId = url.searchParams.get("entityId") || "";
-    if (entityType && !["product", "category", "application", "article", "certificate", "download"].includes(entityType)) return Response.json({ error: "Invalid entity type" }, { status: 400 });
+    if (entityType && !["product", "category", "company_profile", "application", "article", "certificate", "download"].includes(entityType)) return Response.json({ error: "Invalid entity type" }, { status: 400 });
     try {
       const result = await env.DB.prepare("SELECT id, entity_type AS entityType, entity_id AS entityId, locale, status, verification_status AS verificationStatus, data_json AS dataJson, updated_by AS updatedBy, published_at AS publishedAt, updated_at AS updatedAt FROM content_translations WHERE (? = '' OR entity_type = ?) AND (? = '' OR entity_id = ?) ORDER BY entity_type, entity_id, locale").bind(entityType, entityType, entityId, entityId).all<Record<string, unknown>>();
       return Response.json({ records: normalizeContentRows(result.results) });
@@ -467,7 +476,7 @@ async function handleAdminTranslations(request: Request, env: Env): Promise<Resp
   if ((request.method === "POST" && !recordId) || (request.method === "PATCH" && recordId)) {
     let input: TranslationInput;
     try { input = await request.json() as TranslationInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
-    if (!input.entityType || !["product", "category", "application", "article", "certificate", "download"].includes(input.entityType) || !input.entityId || !input.locale || !contentLocales.includes(input.locale) || !input.status || !contentStatuses.includes(input.status) || !input.verificationStatus || !verificationStatuses.includes(input.verificationStatus) || !input.data || Array.isArray(input.data)) return Response.json({ error: "A valid entity, locale, state and translation payload are required" }, { status: 400 });
+    if (!input.entityType || !["product", "category", "company_profile", "application", "article", "certificate", "download"].includes(input.entityType) || !input.entityId || !input.locale || !contentLocales.includes(input.locale) || !input.status || !contentStatuses.includes(input.status) || !input.verificationStatus || !verificationStatuses.includes(input.verificationStatus) || !input.data || Array.isArray(input.data)) return Response.json({ error: "A valid entity, locale, state and translation payload are required" }, { status: 400 });
     if (input.status === "published" && input.verificationStatus !== "verified") return Response.json({ error: "Only verified translations can be published" }, { status: 400 });
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
     const entityConfig = Object.values(contentConfig).find(config => config.entity === input.entityType)!;

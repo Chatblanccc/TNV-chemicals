@@ -122,6 +122,15 @@ final result: passed
 
 ## 2026-07-13 V2 platform completion pass
 
+- Added the governed company-profile editor inside the existing editorial
+  workspace and reused the public definition-list layout. No new dashboard,
+  card wall, or unsupported company claim was introduced.
+- Published a clearly labelled local-only company fixture through the real D1
+  admin API and confirmed its legal name, manufacturing statement, contact,
+  `alternateName`, and `areaServed` reached the public page and Organization
+  schema. Checks at 1024/768/390/360 showed `scrollWidth <= clientWidth` with no
+  browser warnings or errors. The fixture was archived and the page returned to
+  its honest pending-verification state before handoff.
 - Added governed product-category records to the existing content workspace.
   Category labels remain typographic metadata rather than a new card layer, so
   the Material Atlas hierarchy and existing product routes remain unchanged.

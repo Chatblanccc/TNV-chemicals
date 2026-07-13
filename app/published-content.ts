@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { cmsApplications, cmsArticles, cmsCategories, cmsProducts, certificates, contentTranslations, downloads, seoMetadata } from "../db/schema";
+import { cmsApplications, cmsArticles, cmsCategories, cmsProducts, certificates, companyProfiles, contentTranslations, downloads, seoMetadata } from "../db/schema";
 import { applications as seedApplications, articles as seedArticles, products as seedProducts } from "./site-data";
 
 export type PublishedProduct = {
@@ -18,11 +18,16 @@ export type PublishedArticle = {
 
 export type PublishedApplication = { slug: string; name: string; nameZh?: string; intro: string; introZh?: string; challenges: string[]; challengesZh?: string[]; verificationStatus?: "pending" | "verified" };
 export type PublishedCategory = { slug: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; verificationStatus?: "pending" | "verified" };
+export type PublishedCompanyProfile = {
+  slug: string; legalName: string; legalNameZh?: string; businessType?: string; businessTypeZh?: string;
+  manufacturingCapability?: string; manufacturingCapabilityZh?: string; exportMarkets: string[]; exportMarketsZh?: string[];
+  address?: string; addressZh?: string; email?: string; phone?: string; websiteUrl?: string; verificationStatus: "verified";
+};
 
 export type PublishedCertificate = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; issuedDate?: string; expiresDate?: string };
 export type PublishedDownload = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; productSlug?: string; locale?: string };
 export type PublishedSeo = { title: string; description: string; keywords: string[] };
-export type PublishedSiteContent = { products: PublishedProduct[]; categories: PublishedCategory[]; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
+export type PublishedSiteContent = { products: PublishedProduct[]; categories: PublishedCategory[]; companyProfile: PublishedCompanyProfile | null; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
 
 const titleCase = (value: string) => value.split("-").map(part => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 const objectValue = (value: string) => { try { const parsed = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}; } catch { return {}; } };
@@ -46,9 +51,10 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
   try {
     const { getDb } = await import("../db");
     const db = getDb();
-    const [productRows, categoryRows, applicationRows, articleRows, certificateRows, downloadRows, translationRows] = await Promise.all([
+    const [productRows, categoryRows, companyProfileRows, applicationRows, articleRows, certificateRows, downloadRows, translationRows] = await Promise.all([
       db.select().from(cmsProducts).where(and(eq(cmsProducts.status, "published"), eq(cmsProducts.verificationStatus, "verified"))),
       db.select().from(cmsCategories).where(and(eq(cmsCategories.status, "published"), eq(cmsCategories.verificationStatus, "verified"))).catch(() => []),
+      db.select().from(companyProfiles).where(and(eq(companyProfiles.status, "published"), eq(companyProfiles.verificationStatus, "verified"))).catch(() => []),
       db.select().from(cmsApplications).where(and(eq(cmsApplications.status, "published"), eq(cmsApplications.verificationStatus, "verified"))).catch(() => []),
       db.select().from(cmsArticles).where(and(eq(cmsArticles.status, "published"), eq(cmsArticles.verificationStatus, "verified"))),
       db.select().from(certificates).where(and(eq(certificates.status, "published"), eq(certificates.verificationStatus, "verified"))),
@@ -87,6 +93,13 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       const zh = translation("category", row.id, "zh");
       return { slug: row.slug, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), verificationStatus: "verified" };
     });
+    const publishedCompanyProfile: PublishedCompanyProfile | null = companyProfileRows.length ? (() => {
+      const row = companyProfileRows[0];
+      const data = objectValue(row.dataJson);
+      const en = translation("company_profile", row.id, "en");
+      const zh = translation("company_profile", row.id, "zh");
+      return { slug: row.slug, legalName: stringValue(en.legalName) || stringValue(data.legalNameEn), legalNameZh: stringValue(zh.legalName) || stringValue(data.legalNameZh), businessType: stringValue(en.businessType) || stringValue(data.businessTypeEn), businessTypeZh: stringValue(zh.businessType) || stringValue(data.businessTypeZh), manufacturingCapability: stringValue(en.manufacturingCapability) || stringValue(data.manufacturingCapabilityEn), manufacturingCapabilityZh: stringValue(zh.manufacturingCapability) || stringValue(data.manufacturingCapabilityZh), exportMarkets: stringArray(en.exportMarkets).length ? stringArray(en.exportMarkets) : stringArray(data.exportMarkets), exportMarketsZh: stringArray(zh.exportMarkets).length ? stringArray(zh.exportMarkets) : stringArray(data.exportMarketsZh), address: stringValue(en.address) || stringValue(data.addressEn), addressZh: stringValue(zh.address) || stringValue(data.addressZh), email: stringValue(data.email), phone: stringValue(data.phone), websiteUrl: stringValue(data.websiteUrl), verificationStatus: "verified" };
+    })() : null;
     const applicationOverrides: PublishedApplication[] = applicationRows.map(row => {
       const data = objectValue(row.dataJson);
       const en = translation("application", row.id, "en");
@@ -106,9 +119,9 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
     const publishedCategories = mergeBySlug(seededCategories, categoryOverrides);
     const categoryMap = new Map(publishedCategories.map(category => [category.slug, category]));
     const publishedProducts = mergeBySlug(seededProducts, productOverrides).map(product => { const category = categoryMap.get(product.category); return category ? { ...product, categoryName: category.name, categoryNameZh: category.nameZh || product.categoryNameZh } : product; });
-    return { products: publishedProducts, categories: publishedCategories, applications: mergeBySlug(seededApplications, applicationOverrides), articles: mergeBySlug(seededArticles, articleOverrides), certificates: publishedCertificates, downloads: publishedDownloads };
+    return { products: publishedProducts, categories: publishedCategories, companyProfile: publishedCompanyProfile, applications: mergeBySlug(seededApplications, applicationOverrides), articles: mergeBySlug(seededArticles, articleOverrides), certificates: publishedCertificates, downloads: publishedDownloads };
   } catch {
-    return { products: seededProducts, categories: seededCategories, applications: seededApplications, articles: seededArticles, certificates: [], downloads: [] };
+    return { products: seededProducts, categories: seededCategories, companyProfile: null, applications: seededApplications, articles: seededArticles, certificates: [], downloads: [] };
   }
 }
 

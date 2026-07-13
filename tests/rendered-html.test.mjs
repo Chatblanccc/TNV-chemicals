@@ -245,6 +245,19 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(category.status, 201);
   assert.ok(categoryDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_categories")));
 
+  const profileDb = createD1Mock();
+  const profile = await request("/api/admin/content/company-profiles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "tnv-chemicals", status: "published", verificationStatus: "verified", data: { legalNameEn: "Verified Legal Entity Ltd.", email: "verified@example.com", websiteUrl: "https://verified.example.com" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: profileDb.db });
+  assert.equal(profile.status, 201);
+  assert.ok(profileDb.executed.some(statement => statement.sql.includes("INSERT INTO company_profiles")));
+  const profileInsert = profileDb.executed.find(statement => statement.sql.includes("INSERT INTO company_profiles"));
+  assert.ok(profileInsert.args.some(value => typeof value === "string" && value.includes('"legalNameEn":"Verified Legal Entity Ltd."') && value.includes('"email":"verified@example.com"')));
+
+  const invalidProfile = await request("/api/admin/content/company-profiles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "tnv-chemicals", status: "published", verificationStatus: "verified", data: { legalNameEn: "Verified Legal Entity Ltd.", websiteUrl: "http://insecure.example.com" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidProfile.status, 400);
+
+  const nonCanonicalProfile = await request("/api/admin/content/company-profiles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "another-company", status: "draft", verificationStatus: "pending", data: { legalNameEn: "Pending legal entity" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(nonCanonicalProfile.status, 400);
+
   const unverified = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "pending-certificate", type: "ISO", status: "published", verificationStatus: "pending", data: { nameEn: "Pending certificate" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(unverified.status, 400);
   assert.deepEqual(await unverified.json(), { error: "Only verified content can be published" });
@@ -320,6 +333,7 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.match(cmsHtml, /Molecular weight — verified only/i);
   assert.match(cmsHtml, /Packaging — verified only/i);
   assert.match(cmsHtml, /<button type="button">categories<\/button>/i);
+  assert.match(cmsHtml, /<button type="button">company-profiles<\/button>/i);
   assert.match(cmsHtml, /<button type="button">applications<\/button>/i);
 
   const seoWorkspace = await request("/en/admin/seo");

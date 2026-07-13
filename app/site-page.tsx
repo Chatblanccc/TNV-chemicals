@@ -153,18 +153,22 @@ function ApplicationDetail({ item, locale, siteProducts }: { item: PublishedAppl
 }
 
 function CompanyProfile({ locale, published }: { locale: Locale; published: PublishedSiteContent }) {
+  const profile = published.companyProfile;
   const categories = Array.from(new Map(published.products.map(product => [product.category, localizedValue(locale, product.categoryName, product.categoryNameZh)])).values());
   const certificateNames = published.certificates.map(certificate => localizedValue(locale, certificate.name, certificate.nameZh));
+  const pending = (key: string, en: string, zh = "待公司核实") => <Placeholder key={key} locale={locale}>{locale === "zh" ? zh : en}</Placeholder>;
+  const markets = profile ? (locale === "zh" && profile.exportMarketsZh?.length ? profile.exportMarketsZh : profile.exportMarkets) : [];
+  const contact = profile ? [localizedValue(locale, profile.address || "", profile.addressZh), profile.email, profile.phone, profile.websiteUrl].filter(Boolean).join(" · ") : "";
   const rows: Array<[string, React.ReactNode]> = [
     [locale === "zh" ? "公开品牌名称" : "Public brand name", company.brand],
-    [locale === "zh" ? "法定实体" : "Legal entity", <Placeholder key="legal-entity" locale={locale}>{locale === "zh" ? "待公司核实" : "company verification pending"}</Placeholder>],
-    [locale === "zh" ? "业务类型" : "Business type", <Placeholder key="business-type" locale={locale}>{locale === "zh" ? "待公司核实" : "company verification pending"}</Placeholder>],
-    [locale === "zh" ? "制造能力" : "Manufacturing capability", <Placeholder key="manufacturing" locale={locale}>{locale === "zh" ? "待提供工厂与产线证据" : "facility and production evidence pending"}</Placeholder>],
+    [locale === "zh" ? "法定实体" : "Legal entity", profile?.legalName ? localizedValue(locale, profile.legalName, profile.legalNameZh) : pending("legal-entity", "company verification pending")],
+    [locale === "zh" ? "业务类型" : "Business type", profile?.businessType ? localizedValue(locale, profile.businessType, profile.businessTypeZh) : pending("business-type", "company verification pending")],
+    [locale === "zh" ? "制造能力" : "Manufacturing capability", profile?.manufacturingCapability ? localizedValue(locale, profile.manufacturingCapability, profile.manufacturingCapabilityZh) : pending("manufacturing", "facility and production evidence pending", "待提供工厂与产线证据")],
     [locale === "zh" ? "公开产品目录" : "Public catalog structure", categories.join(locale === "zh" ? "、" : ", ")],
     [locale === "zh" ? "应用路径" : "Application pathways", published.applications.map(application => localizedValue(locale, application.name, application.nameZh)).join(locale === "zh" ? "、" : ", ")],
-    [locale === "zh" ? "出口市场" : "Export markets", <Placeholder key="markets" locale={locale}>{locale === "zh" ? "待公司核实" : "company verification pending"}</Placeholder>],
-    [locale === "zh" ? "已发布证书" : "Published certificates", certificateNames.length ? certificateNames.join(locale === "zh" ? "、" : ", ") : <Placeholder key="certificates" locale={locale}>{locale === "zh" ? "尚无已验证证书" : "no verified certificates published"}</Placeholder>],
-    [locale === "zh" ? "联系方式" : "Contact information", <Placeholder key="contact" locale={locale}>{locale === "zh" ? "法定地址、邮箱与电话待核实" : "legal address, email and phone pending verification"}</Placeholder>],
+    [locale === "zh" ? "出口市场" : "Export markets", markets.length ? markets.join(locale === "zh" ? "、" : ", ") : pending("markets", "company verification pending")],
+    [locale === "zh" ? "已发布证书" : "Published certificates", certificateNames.length ? certificateNames.join(locale === "zh" ? "、" : ", ") : pending("certificates", "no verified certificates published", "尚无已验证证书")],
+    [locale === "zh" ? "联系方式" : "Contact information", contact || pending("contact", "legal address, email and phone pending verification", "法定地址、邮箱与电话待核实")],
   ];
   return <main><PageHero locale={locale} eyebrow={locale === "zh" ? "公司知识档案" : "COMPANY KNOWLEDGE PROFILE"} title={locale === "zh" ? "让采购方与搜索系统读取同一份事实。" : "One attributable company record for buyers and search systems."} intro={locale === "zh" ? "本页只发布能够追溯来源的企业信息；未知字段保持待核实状态，不用营销推断代替事实。" : "This page publishes attributable company information only. Unknown fields remain visibly pending instead of being replaced with marketing assumptions."}/><section className="company-profile"><div><span className="eyebrow">{locale === "zh" ? "事实状态" : "FACT STATUS"}</span><h2>{locale === "zh" ? "公开信息与待核实信息分开呈现。" : "Published facts and verification gaps, separated clearly."}</h2><p>{locale === "zh" ? "产品目录与应用路径来自当前公开站点；法律身份、制造、市场、证书与联系方式必须由公司提供原始证据后才能发布。" : "Catalog and application pathways come from the current public site. Legal identity, manufacturing, markets, certificates and contact details require company-supplied source evidence before publication."}</p></div><dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section></main>;
 }
@@ -272,7 +276,8 @@ export function SitePage({ route: inputRoute, content, searchParams = {} }: { ro
   const baseUrl = process.env.SITE_URL?.replace(/\/$/, "");
   const pageUrl = baseUrl ? `${baseUrl}${localizedPath(locale, route)}` : undefined;
   const language = locale === "zh" ? "zh-CN" : "en";
-  const organization = { "@type": "Organization", "@id": baseUrl ? `${baseUrl}/#organization` : undefined, name: company.brand, url: baseUrl };
+  const verifiedCompany = content.companyProfile;
+  const organization = { "@type": "Organization", "@id": baseUrl ? `${baseUrl}/#organization` : undefined, name: verifiedCompany?.legalName ? localizedValue(locale, verifiedCompany.legalName, verifiedCompany.legalNameZh) : company.brand, alternateName: verifiedCompany?.legalName ? company.brand : undefined, url: verifiedCompany?.websiteUrl || baseUrl, email: verifiedCompany?.email || undefined, telephone: verifiedCompany?.phone || undefined, address: verifiedCompany?.address ? { "@type": "PostalAddress", streetAddress: localizedValue(locale, verifiedCompany.address, verifiedCompany.addressZh) } : undefined, areaServed: verifiedCompany?.exportMarkets?.length ? (locale === "zh" && verifiedCompany.exportMarketsZh?.length ? verifiedCompany.exportMarketsZh : verifiedCompany.exportMarkets) : undefined };
   const articleFaq = article ? (locale === "zh" ? article.faqZh : article.faq) : [];
   const productImage = product ? (product.category === "printing-inks" ? media.materialInks : product.category === "colorants" ? media.materialColorants : product.category === "additives" ? media.materialAdditives : media.materialCustom) : undefined;
   const schema = route === "/" || route === "/company-profile"

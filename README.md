@@ -130,7 +130,8 @@ The private administration workspace uses the Material Atlas interface and D1
 as its durable source of truth:
 
 - `/en/admin/content` and `/zh/admin/content` manage products, product
-  categories, applications, knowledge articles, certificates, and downloads.
+  categories, the governed company profile, applications, knowledge articles,
+  certificates, and downloads.
 - `/en/admin/seo` and `/zh/admin/seo` manage page-level bilingual titles,
   descriptions, and keywords.
 - `/en/admin/users` and `/zh/admin/users` manage the `admin`, `marketing`,
@@ -177,8 +178,10 @@ a dynamic `/applications/{slug}` route without removing any existing route.
   internal product/application links, FAQ, checklists, and Article,
   BreadcrumbList, and FAQPage structured data.
 - `/en/company-profile` and `/zh/company-profile` expose an attributable company
-  knowledge record. Unknown legal, manufacturing, market, certificate, and
-  contact facts remain visibly pending.
+  knowledge record. Legal identity, business type, manufacturing statement,
+  export markets, address, email, phone, and official website are sourced only
+  from a `published + verified` company-profile record. Missing facts remain
+  visibly pending and are omitted from Organization structured data.
 - `public/llms.txt`, canonical links, `hreflang`, Open Graph, Product and
   Organization structured data, launch-gated sitemap output, and admin-safe
   robots rules form the SEO/GEO boundary.
