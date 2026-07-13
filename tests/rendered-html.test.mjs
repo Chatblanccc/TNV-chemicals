@@ -315,6 +315,16 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(invalidProductCategory.status, 400);
   assert.deepEqual(await invalidProductCategory.json(), { error: "Product category must use a lowercase, hyphenated slug" });
 
+  const unpublishedProductCategory = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "unpublished-category-product", category: "future-category" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unpublishedProductCategory.status, 400);
+  assert.deepEqual(await unpublishedProductCategory.json(), { error: "Product category must be published and verified before the product can be published" });
+
+  const futureCategoryDraft = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "future-category-draft", category: "future-category", status: "draft", verificationStatus: "pending" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(futureCategoryDraft.status, 201);
+
+  const archivedSeedCategory = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...product, slug: "archived-category-product" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], sql => sql.includes("FROM cms_categories") ? { id: "archived-category", slug: "printing-inks", status: "archived", verificationStatus: "verified" } : null).db });
+  assert.equal(archivedSeedCategory.status, 400);
+
   const applicationDb = createD1Mock([], sql => sql.includes("FROM cms_products") ? { id: "verified-product", slug: "verified-product", category: "printing-inks", status: "published", verificationStatus: "verified" } : null);
   const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"], relatedProducts: ["verified-product", "verified-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
   assert.equal(application.status, 201);
@@ -363,6 +373,12 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   const category = await request("/api/admin/content/categories", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-category", status: "published", verificationStatus: "verified", data: { nameEn: "Verified category", descriptionEn: "Verified category description" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: categoryDb.db });
   assert.equal(category.status, 201);
   assert.ok(categoryDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_categories")));
+
+  const dependentCategoryDb = createD1Mock([], sql => sql.includes("SELECT id, slug FROM cms_categories") ? { id: "category-id", slug: "verified-category" } : sql.includes("FROM cms_products WHERE category") ? { slug: "verified-product" } : null);
+  const dependentCategoryArchive = await request("/api/admin/content/categories/category-id", { method: "DELETE", headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" } }, { ADMIN_EMAILS: "admin@example.com", DB: dependentCategoryDb.db });
+  assert.equal(dependentCategoryArchive.status, 409);
+  assert.deepEqual(await dependentCategoryArchive.json(), { error: "Archive or migrate published products before withdrawing this category: verified-product" });
+  assert.equal(dependentCategoryDb.executed.some(statement => statement.sql.includes("UPDATE cms_categories")), false);
 
   const profileDb = createD1Mock();
   const profile = await request("/api/admin/content/company-profiles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "tnv-chemicals", status: "published", verificationStatus: "verified", data: { legalNameEn: "Verified Legal Entity Ltd.", email: "verified@example.com", websiteUrl: "https://verified.example.com" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: profileDb.db });

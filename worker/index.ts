@@ -379,6 +379,7 @@ const verificationStatuses: VerificationStatus[] = ["pending", "verified", "reje
 const downloadTypes = ["sds", "tds", "coa", "catalog", "certificate", "other"];
 const productDocumentTypes = new Set(["sds", "tds", "coa"]);
 const seedProductBySlug = new Map(seedProducts.map(product => [product.slug, product]));
+const seedCategorySlugs = new Set(seedProducts.map(product => product.category));
 const seedApplicationSlugs = new Set(seedApplications.map(application => application.slug));
 const seedArticleBySlug = new Map(seedArticles.map(article => [article.slug, article]));
 const publicStaticRoutes = new Set(routePaths.filter(path => path !== "/search" && path !== "/admin" && !path.startsWith("/admin/")));
@@ -461,10 +462,30 @@ function normalizedContentData(type: ContentType, data: Record<string, unknown>)
 
 type ManagedRouteRow = { id: string; slug: string; status: ContentStatus; verificationStatus: VerificationStatus; category?: string };
 
-async function cmsOwnsSeedLifecycle(entityType: "product" | "application" | "article", row: ManagedRouteRow, env: Env) {
+async function cmsOwnsSeedLifecycle(entityType: "product" | "category" | "application" | "article", row: ManagedRouteRow, env: Env) {
   if (row.status === "archived") return true;
   const event = await env.DB.prepare("SELECT id FROM content_events WHERE entity_type = ? AND entity_id = ? AND action IN ('published', 'unpublished', 'archived') LIMIT 1").bind(entityType, row.id).first<{ id: string }>();
   return Boolean(event);
+}
+
+async function isPublicCategory(categorySlug: string, env: Env) {
+  const row = await env.DB.prepare("SELECT id, slug, status, verification_status AS verificationStatus FROM cms_categories WHERE slug = ? LIMIT 1").bind(categorySlug).first<ManagedRouteRow>();
+  if (row?.status === "published" && row.verificationStatus === "verified") return true;
+  return seedCategorySlugs.has(categorySlug) && (!row?.id || !await cmsOwnsSeedLifecycle("category", row, env));
+}
+
+async function validatePublishedProductCategory(input: ContentInput, env: Env): Promise<string | null> {
+  if (input.status !== "published" || !input.category) return null;
+  return await isPublicCategory(input.category, env) ? null : "Product category must be published and verified before the product can be published";
+}
+
+async function publicCategoryDependency(categorySlug: string, env: Env): Promise<string | null> {
+  const managed = await env.DB.prepare("SELECT slug FROM cms_products WHERE category = ? AND status = 'published' AND verification_status = 'verified' LIMIT 1").bind(categorySlug).first<{ slug: string }>();
+  if (managed?.slug) return managed.slug;
+  for (const seed of seedProducts.filter(product => product.category === categorySlug)) {
+    if ((await resolvePublicProduct(seed.slug, env))?.category === categorySlug) return seed.slug;
+  }
+  return null;
 }
 
 async function resolvePublicProduct(productSlug: string, env: Env): Promise<{ category: string } | null> {
@@ -569,6 +590,12 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
     const error = validateContentInput(type, input);
     if (error) return Response.json({ error }, { status: 400 });
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    if (type === "products") {
+      try {
+        const categoryError = await validatePublishedProductCategory(input, env);
+        if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
+      } catch (categoryError) { return storageError(categoryError); }
+    }
     if (type === "downloads") {
       try {
         const relationshipError = await validatePublishedDownloadRelationship(input, env);
@@ -617,6 +644,14 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
       if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
       if (current.slug !== input.slug) return Response.json({ error: "Published route slugs are immutable; create a new record and configure a redirect before changing a public URL" }, { status: 400 });
       if (type === "products" && current.category !== input.category) return Response.json({ error: "Product route categories are immutable; create a governed redirect before changing the canonical product URL" }, { status: 400 });
+      if (type === "products") {
+        const categoryError = await validatePublishedProductCategory(input, env);
+        if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
+      }
+      if (type === "categories" && (input.status === "archived" || (current.status === "published" && input.status !== "published"))) {
+        const dependency = await publicCategoryDependency(input.slug!, env);
+        if (dependency) return Response.json({ error: `Archive or migrate published products before withdrawing this category: ${dependency}` }, { status: 409 });
+      }
       if (type === "downloads") {
         const relationshipError = await validatePublishedDownloadRelationship(input, env, recordId);
         if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
@@ -649,8 +684,12 @@ async function handleAdminContent(request: Request, env: Env): Promise<Response>
 
   if (request.method === "DELETE" && recordId) {
     try {
-      const current = await env.DB.prepare(`SELECT id FROM ${config.table} WHERE id = ?`).bind(recordId).first();
+      const current = await env.DB.prepare(`SELECT id, slug FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ id: string; slug: string }>();
       if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
+      if (type === "categories") {
+        const dependency = await publicCategoryDependency(current.slug, env);
+        if (dependency) return Response.json({ error: `Archive or migrate published products before withdrawing this category: ${dependency}` }, { status: 409 });
+      }
       const now = Date.now();
       const result = await env.DB.batch([
         env.DB.prepare(`UPDATE ${config.table} SET status = 'archived', published_at = NULL, updated_by = ?, updated_at = ? WHERE id = ?`).bind(admin.email, now, recordId),
