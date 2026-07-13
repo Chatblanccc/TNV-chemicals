@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-async function request(path = "/", init = {}, extraEnv = {}) {
+async function request(path = "/", init = {}, extraEnv = {}, origin = "http://localhost") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${path}-${Math.random()}`);
   const { default: worker } = await import(workerUrl.href);
   return worker.fetch(
-    new Request(`http://localhost${path}`, { headers: { accept: "text/html", ...(init.headers || {}) }, ...init }),
+    new Request(`${origin}${path}`, { headers: { accept: "text/html", ...(init.headers || {}) }, ...init }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) }, ...extraEnv },
     { waitUntil() {}, passThroughOnException() {} },
   );
@@ -31,6 +31,26 @@ function createD1Mock(results = [], firstResult = { status: "new" }) {
       async batch(statements) {
         for (const statement of statements) await statement.run();
         return statements.map(() => ({ success: true }));
+      },
+    },
+  };
+}
+
+function createR2Mock(initialBody = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55])) {
+  const puts = [];
+  const gets = [];
+  return {
+    puts,
+    gets,
+    bucket: {
+      async put(key, value, options) { puts.push({ key, value, options }); return { key }; },
+      async get(key) {
+        gets.push(key);
+        return {
+          body: initialBody,
+          httpEtag: '"test-etag"',
+          writeHttpMetadata(headers) { headers.set("Content-Type", "application/pdf"); headers.set("Content-Disposition", 'inline; filename="verified.pdf"'); },
+        };
       },
     },
   };
@@ -240,6 +260,11 @@ test("protects the inquiry workspace with identity and an explicit allowlist", a
   const allowed = await request("/api/admin/inquiries", { headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" } }, { ADMIN_EMAILS: "admin@example.com", DB: db });
   assert.equal(allowed.status, 200);
   assert.equal((await allowed.json()).inquiries.length, 1);
+
+  const localQa = await request("/api/admin/inquiries", { headers: { accept: "application/json" } }, { DEV_ADMIN_EMAIL: "qa@example.com", ADMIN_EMAILS: "qa@example.com", DB: db });
+  assert.equal(localQa.status, 200);
+  const productionQa = await request("/api/admin/inquiries", { headers: { accept: "application/json" } }, { DEV_ADMIN_EMAIL: "qa@example.com", ADMIN_EMAILS: "qa@example.com", DB: db }, "https://example.com");
+  assert.equal(productionQa.status, 401);
 });
 
 test("renders the inquiry workspace as a private, non-indexable route", async () => {
@@ -268,6 +293,16 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
   assert.equal(application.status, 201);
   assert.ok(applicationDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_applications")));
+
+  const articleDb = createD1Mock();
+  const article = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-article", category: "technical-guides", status: "published", verificationStatus: "verified", data: { titleEn: "Verified article", summaryEn: "Verified article summary", authorEn: "Verified Author", publishDate: "2026-07-13", coverMediaKey: "evidenceQc" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: articleDb.db });
+  assert.equal(article.status, 201);
+  const articleInsert = articleDb.executed.find(statement => statement.sql.includes("INSERT INTO cms_articles"));
+  assert.ok(articleInsert.args.some(value => typeof value === "string" && value.includes('"authorEn":"Verified Author"') && value.includes('"coverMediaKey":"evidenceQc"')));
+
+  const invalidArticleCover = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "invalid-cover", category: "technical-guides", status: "draft", verificationStatus: "pending", data: { titleEn: "Draft article", summaryEn: "Draft summary", coverMediaKey: "unregistered-image" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidArticleCover.status, 400);
+  assert.deepEqual(await invalidArticleCover.json(), { error: "Article cover must reference a registered media key" });
 
   const categoryDb = createD1Mock();
   const category = await request("/api/admin/content/categories", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-category", status: "published", verificationStatus: "verified", data: { nameEn: "Verified category", descriptionEn: "Verified category description" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: categoryDb.db });
@@ -319,6 +354,40 @@ test("supports independently reviewed translations for planned locales", async (
 
   const unsupported = await request("/api/admin/translations", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...translation, locale: "fr" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(unsupported.status, 400);
+});
+
+test("uploads PDF documents to governed object storage without publishing them", async () => {
+  const r2 = createR2Mock();
+  const form = new FormData();
+  form.append("file", new File(["%PDF-1.7\nverified test document"], "verified SDS.pdf", { type: "application/pdf" }));
+  const uploaded = await request("/api/admin/documents", { method: "POST", headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: form }, { ADMIN_EMAILS: "admin@example.com", DOCUMENTS: r2.bucket });
+  assert.equal(uploaded.status, 201);
+  const result = await uploaded.json();
+  assert.match(result.fileUrl, /^\/documents\/[0-9a-f-]+\.pdf$/i);
+  assert.equal(result.originalName, "verified-SDS.pdf");
+  assert.equal(r2.puts.length, 1);
+  assert.equal(r2.puts[0].options.httpMetadata.contentType, "application/pdf");
+
+  const invalid = new FormData();
+  invalid.append("file", new File(["not a PDF"], "fake.pdf", { type: "application/pdf" }));
+  const rejected = await request("/api/admin/documents", { method: "POST", headers: { accept: "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: invalid }, { ADMIN_EMAILS: "admin@example.com", DOCUMENTS: createR2Mock().bucket });
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(await rejected.json(), { error: "The uploaded file is not a valid PDF" });
+});
+
+test("serves stored PDFs only after a verified content record is published", async () => {
+  const key = "123e4567-e89b-12d3-a456-426614174000.pdf";
+  const r2 = createR2Mock();
+  const verified = await request(`/documents/${key}`, { headers: { accept: "application/pdf" } }, { DB: createD1Mock([], { id: "download-1" }).db, DOCUMENTS: r2.bucket });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.headers.get("content-type"), "application/pdf");
+  assert.equal(verified.headers.get("etag"), '"test-etag"');
+  assert.match(await verified.text(), /^%PDF-/);
+
+  const unavailableR2 = createR2Mock();
+  const unverified = await request(`/documents/${key}`, { headers: { accept: "application/pdf" } }, { DB: createD1Mock([], null).db, DOCUMENTS: unavailableR2.bucket });
+  assert.equal(unverified.status, 404);
+  assert.equal(unavailableR2.gets.length, 0);
 });
 
 test("records consented analytics without personal identity and protects reports", async () => {

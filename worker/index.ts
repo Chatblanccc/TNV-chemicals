@@ -1,17 +1,20 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { articleCoverMediaKeys } from "../app/media";
 
 interface Env {
   ASSETS: Fetcher;
   INQUIRY_WEBHOOK_URL?: string;
   INQUIRY_WEBHOOK_TOKEN?: string;
   ADMIN_EMAILS?: string;
+  DEV_ADMIN_EMAIL?: string;
   ANALYTICS_ENABLED?: string;
   AI_ASSISTANT_ENDPOINT?: string;
   AI_ASSISTANT_TOKEN?: string;
   SITE_LAUNCH_READY?: string;
   DB: D1Database;
+  DOCUMENTS?: R2Bucket;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -42,7 +45,9 @@ const rolePermissions: Record<AdminRole, ReadonlySet<AdminPermission>> = {
 };
 
 async function requireAdmin(request: Request, env: Env, permission: AdminPermission): Promise<Response | AdminSession> {
-  const email = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase();
+  const hostname = new URL(request.url).hostname;
+  const localDevelopment = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const email = (request.headers.get("oai-authenticated-user-email") || (localDevelopment ? env.DEV_ADMIN_EMAIL : ""))?.trim().toLowerCase();
   if (!email) return Response.json({ error: "Authentication required" }, { status: 401 });
   const allowed = new Set((env.ADMIN_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean));
   let role: AdminRole | null = allowed.has(email) ? "admin" : null;
@@ -91,6 +96,62 @@ function withResponseHeaders(response: Response, request: Request, env: Env): Re
     headers.set("Cache-Control", "public, max-age=604800, stale-while-revalidate=2592000");
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+const maxDocumentBytes = 20 * 1024 * 1024;
+
+function safeDocumentName(value: string) {
+  const normalized = value.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (normalized || "document.pdf").slice(-120);
+}
+
+async function handleAdminDocumentUpload(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env, "content:write");
+  if (admin instanceof Response) return admin;
+  if (request.method !== "POST") return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "POST" } });
+  if (!env.DOCUMENTS) return Response.json({ error: "Document storage is not configured" }, { status: 503 });
+  let form: FormData;
+  try { form = await request.formData(); } catch { return Response.json({ error: "A multipart PDF upload is required" }, { status: 400 }); }
+  const entry = form.get("file");
+  if (!(entry instanceof File) || entry.size === 0 || entry.size > maxDocumentBytes || entry.type !== "application/pdf" || !entry.name.toLowerCase().endsWith(".pdf")) {
+    return Response.json({ error: "Upload one PDF file no larger than 20 MB" }, { status: 400 });
+  }
+  const bytes = await entry.arrayBuffer();
+  const signature = new TextDecoder().decode(bytes.slice(0, 5));
+  if (signature !== "%PDF-") return Response.json({ error: "The uploaded file is not a valid PDF" }, { status: 400 });
+  const key = `${crypto.randomUUID()}.pdf`;
+  const originalName = safeDocumentName(entry.name);
+  try {
+    await env.DOCUMENTS.put(key, bytes, {
+      httpMetadata: { contentType: "application/pdf", contentDisposition: `inline; filename="${originalName}"` },
+      customMetadata: { originalName, uploadedBy: admin.email },
+    });
+    return Response.json({ ok: true, fileUrl: `/documents/${key}`, originalName, size: entry.size }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return Response.json({ error: "Document upload failed" }, { status: 503 });
+  }
+}
+
+async function handlePublicDocument(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: "GET, HEAD" } });
+  const pathname = new URL(request.url).pathname;
+  const key = pathname.match(/^\/documents\/([0-9a-f-]+\.pdf)$/i)?.[1];
+  if (!key) return new Response("Not found", { status: 404 });
+  if (!env.DB || !env.DOCUMENTS) return new Response("Not found", { status: 404 });
+  try {
+    const published = await env.DB.prepare("SELECT id FROM downloads WHERE status = 'published' AND verification_status = 'verified' AND json_extract(data_json, '$.fileUrl') = ? UNION ALL SELECT id FROM certificates WHERE status = 'published' AND verification_status = 'verified' AND json_extract(data_json, '$.fileUrl') = ? LIMIT 1")
+      .bind(pathname, pathname).first<{ id: string }>();
+    if (!published) return new Response("Not found", { status: 404 });
+    const object = await env.DOCUMENTS.get(key);
+    if (!object) return new Response("Not found", { status: 404 });
+    const headers = new Headers({ "Content-Type": "application/pdf", "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" });
+    object.writeHttpMetadata(headers);
+    headers.set("Content-Type", "application/pdf");
+    headers.set("ETag", object.httpEtag);
+    return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers });
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
 }
 
 async function handleInquiry(request: Request, env: Env): Promise<Response> {
@@ -346,6 +407,8 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   if (type === "company-profiles" && typeof input.data.websiteUrl === "string" && input.data.websiteUrl && !isSafeFileUrl(input.data.websiteUrl)) return "The verified website URL must use HTTPS";
   if (type === "applications" && (typeof input.data.nameEn !== "string" || typeof input.data.introEn !== "string")) return "Application English name and introduction are required";
   if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
+  if (type === "articles" && typeof input.data.publishDate === "string" && input.data.publishDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.data.publishDate)) return "Publication date must use YYYY-MM-DD";
+  if (type === "articles" && typeof input.data.coverMediaKey === "string" && input.data.coverMediaKey && !articleCoverMediaKeys.includes(input.data.coverMediaKey as typeof articleCoverMediaKeys[number])) return "Article cover must reference a registered media key";
   if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string")) return "Certificate type and English name are required";
   if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string")) return "Download type and English name are required";
   if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeFileUrl(input.data.fileUrl)) return "A verified HTTPS or site-relative file URL is required before publication";
@@ -604,12 +667,14 @@ const worker = {
     if (url.pathname === "/api/inquiry") return withResponseHeaders(await handleInquiry(request, env), request, env);
     if (url.pathname === "/api/analytics") return withResponseHeaders(await handleAnalyticsEvent(request, env), request, env);
     if (url.pathname === "/api/assistant/recommend") return withResponseHeaders(await handleAssistant(request, env), request, env);
+    if (url.pathname === "/api/admin/documents") return withResponseHeaders(await handleAdminDocumentUpload(request, env), request, env);
     if (url.pathname === "/api/admin/inquiries" || url.pathname.startsWith("/api/admin/inquiries/")) return withResponseHeaders(await handleAdminInquiries(request, env), request, env);
     if (url.pathname === "/api/admin/analytics") return withResponseHeaders(await handleAdminAnalytics(request, env), request, env);
     if (url.pathname.startsWith("/api/admin/content/")) return withResponseHeaders(await handleAdminContent(request, env), request, env);
     if (url.pathname === "/api/admin/translations" || url.pathname.startsWith("/api/admin/translations/")) return withResponseHeaders(await handleAdminTranslations(request, env), request, env);
     if (url.pathname === "/api/admin/seo" || url.pathname.startsWith("/api/admin/seo/")) return withResponseHeaders(await handleAdminSeo(request, env), request, env);
     if (url.pathname === "/api/admin/users" || url.pathname.startsWith("/api/admin/users/")) return withResponseHeaders(await handleAdminUsers(request, env), request, env);
+    if (url.pathname.startsWith("/documents/")) return withResponseHeaders(await handlePublicDocument(request, env), request, env);
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

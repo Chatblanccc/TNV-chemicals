@@ -105,6 +105,9 @@ launch is explicitly approved.
   data URLs to the company-controlled production origin.
 - The `DB` D1 binding is required for inquiry storage. Apply the generated
   Drizzle migration before accepting production inquiries.
+- The `DOCUMENTS` R2 binding stores administrator-uploaded PDF files. Uploaded
+  objects remain publicly inaccessible until a certificate or download record
+  referencing that URL is both verified and published.
 - `INQUIRY_WEBHOOK_URL=https://...` optionally forwards a stored inquiry to a
   sales notification workflow. Missing or failed notification never erases the
   durable lead.
@@ -112,6 +115,9 @@ launch is explicitly approved.
 - `ADMIN_EMAILS=owner@example.com,sales@example.com` is the explicit,
   comma-separated bootstrap allowlist for the administration workspace.
   Authentication alone does not grant admin access.
+- `DEV_ADMIN_EMAIL=qa@example.com` can supply a local QA identity only when the
+  request hostname is `localhost`, `127.0.0.1`, or `::1`. It is ignored on all
+  production hostnames and should not be used as a deployment credential.
 - `ANALYTICS_ENABLED=true` enables consent-gated, first-party event storage.
   Events intentionally exclude email, IP address, user agent, and form content.
 - `GA_MEASUREMENT_ID=G-...` optionally loads Google Analytics after consent on
@@ -143,7 +149,9 @@ Content uses separate editorial and verification states. Only records with both
 routes. This prevents draft or unverified product claims, certificates, and
 technical files from leaking into the buyer experience. Certificate and
 download records also require an HTTPS or site-relative file URL before they can
-be published.
+be published. Their editor can upload PDF files (20 MB maximum) to the bound R2
+bucket and automatically reuse the generated site-relative URL; upload alone
+never publishes or exposes the object.
 
 Apply every Drizzle migration in `drizzle/` to the bound D1 database before
 using the administration workspace. Bootstrap administrators come from
@@ -171,6 +179,12 @@ structure without creating duplicate indexable pages.
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add
 a dynamic `/applications/{slug}` route without removing any existing route.
+
+Articles support bilingual titles, summaries, bodies, author names, explicit
+publication dates, related content, checklists, FAQs, and a cover selected only
+from media registered in `app/media.ts`. Missing authors or covers are omitted
+rather than inferred; published values flow into the visible byline, Open Graph,
+Twitter, and Article structured data.
 
 ## Search, SEO, GEO, and localization
 

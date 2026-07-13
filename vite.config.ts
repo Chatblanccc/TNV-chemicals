@@ -16,6 +16,7 @@ const localBindingConfig = {
   compatibility_flags: ["nodejs_compat"],
   vars: {
     ADMIN_EMAILS: process.env.ADMIN_EMAILS || "",
+    DEV_ADMIN_EMAIL: process.env.DEV_ADMIN_EMAIL || "",
     ANALYTICS_ENABLED: process.env.ANALYTICS_ENABLED || "false",
     GA_MEASUREMENT_ID: process.env.GA_MEASUREMENT_ID || "",
     GOOGLE_SITE_VERIFICATION: process.env.GOOGLE_SITE_VERIFICATION || "",

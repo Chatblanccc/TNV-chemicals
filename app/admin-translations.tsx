@@ -24,7 +24,7 @@ const templates: Record<TranslatableEntity, Record<string, unknown>> = {
   category: { name: "", description: "" },
   company_profile: { legalName: "", businessType: "", manufacturingCapability: "", exportMarkets: [], address: "" },
   application: { name: "", intro: "", challenges: [] },
-  article: { title: "", summary: "", type: "", sectionHeading: "", body: "", checklist: [], faq: [] },
+  article: { title: "", summary: "", type: "", author: "", sectionHeading: "", body: "", checklist: [], faq: [] },
   certificate: { name: "", description: "" },
   download: { name: "", description: "" },
 };

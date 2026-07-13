@@ -207,3 +207,27 @@ final result: passed
   readable quantity/unit grouping. No browser warnings or errors were present.
 - Automated acceptance: lint passed, TypeScript passed, production build
   passed, and all 26 rendered/API tests passed.
+
+## 2026-07-13 governed documents and article metadata
+
+- Certificate and download editors now provide an accessible PDF uploader with
+  explicit idle, validation, uploading, success, and error states. Uploads are
+  limited to signed PDF files up to 20 MB and do not publish themselves.
+- Uploaded files use site-relative document URLs backed by the `DOCUMENTS` R2
+  binding. The public document route serves an object only while a referencing
+  certificate or download record is both published and verified.
+- The article editor now captures an explicit publication date, optional
+  verified author names in English and Chinese, and an optional cover selected
+  from the governed media registry. These values feed visible article metadata,
+  Open Graph/Twitter metadata, and truthful Article structured data.
+- Browser checks on the article editor at 1440, 1024, 768, 390, and 360 CSS
+  pixels confirmed all new fields are visible and
+  `scrollWidth == clientWidth`. The PDF uploader passed the same five-width
+  check, including its associated no-file validation alert. Browser logs
+  contained only Vite and React development messages, with no warnings or
+  errors.
+- The local-only development admin identity is restricted to loopback hosts and
+  is ignored on non-local origins. The local published product fixture used for
+  QA was archived after verification.
+- Automated acceptance: lint passed, TypeScript passed, production build
+  passed, and all 28 rendered/API tests passed.

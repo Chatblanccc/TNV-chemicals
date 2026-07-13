@@ -5,6 +5,7 @@ import { routePaths } from "../site-data";
 import { localizedPath, splitLocalizedRoute, t } from "../i18n";
 import { loadPublishedSeo, loadPublishedSiteContent, type PublishedSiteContent } from "../published-content";
 import { activeLocales } from "../locales";
+import { articleCoverMedia } from "../media";
 
 export function generateStaticParams() {
   return activeLocales.flatMap(locale =>
@@ -49,6 +50,7 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
     "/request-quote": "Request a quote", "/admin": "Administration", "/admin/inquiries": "Inquiry management", "/admin/content": "Content management", "/admin/seo": "SEO management", "/admin/analytics": "Analytics", "/admin/users": "Access control", "/privacy-policy": "Privacy", "/terms": "Terms",
   };
   const contentArticle = article || knowledgeArticle;
+  const articleCover = articleCoverMedia(contentArticle?.coverMediaKey);
   const label = route === "/" ? "TNV Chemicals" : product?.name || app?.name || contentArticle?.title || knowledgeCategory?.name || routeLabels[route] || "TNV Chemicals";
   const localizedLabel = locale === "zh" ? (product?.nameZh || app?.nameZh || contentArticle?.titleZh || t(locale, label)) : label;
   const title = route === "/" ? (locale === "zh" ? "TNV Chemicals｜工业油墨与化学解决方案" : "TNV Chemicals | Industrial Ink & Chemical Solutions") : `${localizedLabel} | TNV Chemicals`;
@@ -62,8 +64,8 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
     description: resolvedDescription,
     keywords: seo?.keywords,
     alternates: { canonical: localizedPath(locale, canonicalRoute), languages: { en: localizedPath("en", canonicalRoute), "zh-CN": localizedPath("zh", canonicalRoute), "x-default": localizedPath("en", canonicalRoute) } },
-    openGraph: { title: resolvedTitle, description: resolvedDescription, type: contentArticle ? "article" : "website", locale: locale === "zh" ? "zh_CN" : "en_US", images: [{ url: "/og.jpg", width: 1536, height: 1024, alt: locale === "zh" ? "TNV Chemicals 工业油墨与应用解决方案" : "TNV Chemicals industrial ink and application solutions" }] },
-    twitter: { card: "summary_large_image", title: resolvedTitle, description: resolvedDescription, images: ["/og.jpg"] },
+    openGraph: { title: resolvedTitle, description: resolvedDescription, type: contentArticle ? "article" : "website", locale: locale === "zh" ? "zh_CN" : "en_US", images: [{ url: articleCover?.src || "/og.jpg", width: articleCover?.width || 1536, height: articleCover?.height || 1024, alt: articleCover?.alt || (locale === "zh" ? "TNV Chemicals 工业油墨与应用解决方案" : "TNV Chemicals industrial ink and application solutions") }] },
+    twitter: { card: "summary_large_image", title: resolvedTitle, description: resolvedDescription, images: [articleCover?.src || "/og.jpg"] },
     ...(route === "/search" || route === "/admin" || route.startsWith("/admin/") ? { robots: { index: false, follow: route === "/search", noarchive: true, nosnippet: true } } : {}),
   };
 }

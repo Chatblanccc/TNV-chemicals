@@ -62,10 +62,14 @@ must be approved by TNV before launch.
 - Bilingual `/knowledge`, category, and article routes.
 - Three complete buyer guides with summaries, sections, checklists, FAQs,
   related products, and related applications.
-- Article CMS with review and verification gating.
+- Article CMS with review and verification gating, verified author, explicit
+  publication date, and registered-media cover fields.
 - Unique metadata with governed page-level overrides in `seo_metadata`.
 - Canonical, English/Chinese `hreflang`, Open Graph, Twitter image, Article,
   FAQPage, BreadcrumbList, Product, Organization, and WebPage structured data.
+- Article author/date/cover values reach visible metadata and Article/Open Graph
+  output only when supplied through the governed record; blank values are
+  omitted instead of fabricated.
 - Dynamic content routes enter the launch-gated sitemap; admin and search-result
   pages have explicit indexing rules.
 
@@ -111,8 +115,12 @@ with the actual company owner before launch.
 
 **Status: Implementation ready; company files required.**
 
-- Governed certificate CRUD, issue/expiry dates, verified HTTPS/site-relative
-  files, translation support, public center, and audit history exist.
+- Governed certificate CRUD, issue/expiry dates, permission-controlled PDF
+  upload to R2, verified HTTPS/site-relative files, translation support, public
+  center, and audit history exist.
+- Uploaded objects are served only when a referencing certificate/download is
+  simultaneously `published + verified`; draft uploads cannot be fetched from
+  the public document route.
 - With no verified company certificate, the public center shows a truthful empty
   state instead of a fabricated badge.
 
@@ -120,7 +128,8 @@ with the actual company owner before launch.
 
 **Status: Implementation ready; company files required.**
 
-- Governed SDS, TDS, COA, catalog, certificate, and other document records.
+- Governed SDS, TDS, COA, catalog, certificate, and other document records,
+  including permission-controlled PDF upload to R2.
 - Files support product slug and document locale.
 - Verified published TDS/SDS/COA files appear on the matching product page;
   missing files stay marked pending or confirm-by-batch.
@@ -237,7 +246,8 @@ of the following owner-controlled inputs are supplied and verified:
 3. Original facility/laboratory/product imagery or explicit approval to retain
    the current generated placeholders.
 4. Real certificate, TDS, SDS, COA, catalog, and other public files.
-5. Production D1 binding with every migration applied.
+5. Production D1 and `DOCUMENTS` R2 bindings, with every D1 migration applied
+   and an approved document retention policy.
 6. Authorized admin emails and the reviewed inquiry recipient workflow.
 7. Company-controlled `SITE_URL`, Search Console token, optional GA identifier,
    and explicit `SITE_LAUNCH_READY=true` approval.
