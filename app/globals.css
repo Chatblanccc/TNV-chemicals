@@ -217,8 +217,9 @@ th { width: 38%; color: var(--muted); font-weight: 650; }
 .application-list h2 { margin-bottom: 10px; font-family: var(--font-editorial), serif; font-size: 42px; font-weight: 520; }
 .application-list p { max-width: 650px; color: var(--muted); line-height: 1.6; }
 .library-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); }
-.library-grid > div { min-height: 240px; padding: 28px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--white); }
+.library-grid > div, .library-grid > a { min-height: 240px; padding: 28px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--white); }
 .library-grid h2 { margin: 50px 0 20px; font-family: var(--font-editorial), serif; font-size: 28px; font-weight: 520; }
+.library-grid > a > b { display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; font-size: 12px; }
 .fact-sheet { border-top: 1px solid var(--line); }
 .fact-sheet p { margin: 0; padding: 18px 0; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
 .article-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -398,6 +399,50 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
 .admin-state { display: flex; min-height: 340px; align-items: flex-start; flex-direction: column; gap: 22px; }
 .admin-state h2 { max-width: 720px; margin: 0; font-family: var(--font-editorial), "Noto Serif SC", serif; font-size: clamp(30px, 4vw, 52px); font-weight: 400; }
 .text-button { padding: 0 0 5px; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-weight: 700; }
+.admin-navigation { display: flex; padding-inline: var(--gutter); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.admin-navigation a { min-height: 58px; padding: 20px 24px; border-left: 1px solid var(--line); font-size: 11px; font-weight: 750; letter-spacing: .06em; white-space: nowrap; }
+.admin-navigation a:last-child { border-right: 1px solid var(--line); }
+.admin-navigation a[aria-current="page"] { background: var(--ink); color: var(--white); }
+.admin-hub { display: grid; grid-template-columns: repeat(2, 1fr); padding: 42px var(--gutter) var(--section-y); }
+.admin-hub a { min-height: 210px; padding: 32px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); position: relative; }
+.admin-hub a:nth-child(odd) { border-left: 1px solid var(--line); }
+.admin-hub a:nth-child(-n+2) { border-top: 1px solid var(--line); }
+.admin-hub span { font-family: var(--font-editorial), "Noto Serif SC", serif; font-size: 32px; }
+.admin-hub p { max-width: 380px; margin-top: 18px; color: var(--muted); line-height: 1.65; }
+.admin-hub svg { position: absolute; right: 28px; bottom: 28px; }
+.content-workspace { padding: 36px var(--gutter) var(--section-y); }
+.content-tabs { display: flex; margin-bottom: 28px; border-bottom: 1px solid var(--ink); overflow-x: auto; }
+.content-tabs button { min-height: 48px; padding: 0 24px; border: 0; background: transparent; color: var(--ink); cursor: pointer; font-weight: 750; text-transform: capitalize; }
+.content-tabs button[aria-current="page"] { background: var(--ink); color: var(--white); }
+.content-layout, .settings-workspace { display: grid; grid-template-columns: minmax(230px, 310px) minmax(0, 1fr); gap: 42px; }
+.content-list, .settings-list { min-width: 0; }
+.content-list > .button, .settings-list > .button { width: 100%; margin-bottom: 18px; }
+.content-list > p { color: var(--muted); line-height: 1.6; }
+.content-list > button:not(.button), .settings-list > button:not(.button) { width: 100%; padding: 17px 14px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
+.content-list > button:not(.button):last-child, .settings-list > button:not(.button):last-child { border-bottom: 1px solid var(--line); }
+.content-list > button.active, .settings-list > button.active { background: var(--cyan-soft); }
+.content-list b, .content-list span, .content-list small, .settings-list b, .settings-list span, .settings-list small { display: block; overflow-wrap: anywhere; }
+.content-list span, .settings-list span { margin-top: 7px; color: var(--accent-on-light); font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.content-list small, .settings-list small { margin-top: 5px; color: var(--muted); }
+.content-editor, .settings-editor { display: flex; min-width: 0; flex-direction: column; gap: 22px; }
+.content-editor label, .settings-editor label { display: flex; min-width: 0; flex-direction: column; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.content-editor input, .content-editor select, .content-editor textarea, .settings-editor input, .settings-editor select, .settings-editor textarea { width: 100%; min-width: 0; min-height: 48px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 0; background: var(--white); color: var(--ink); font: inherit; font-weight: 500; }
+.content-editor textarea, .settings-editor textarea { min-height: 112px; resize: vertical; line-height: 1.65; }
+.content-editor fieldset { display: grid; gap: 18px; margin: 0; padding: 24px; border: 1px solid var(--line); }
+.content-editor legend { padding-inline: 8px; color: var(--accent-on-light); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.editor-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.publishing-warning, .role-guide { padding: 16px 18px; border-left: 3px solid var(--warning); background: #fff4c6; color: #5f4b14; line-height: 1.6; }
+.form-message { margin: 0; padding: 13px 16px; border-left: 3px solid currentColor; }
+.form-message.error { background: #fbe8e5; color: var(--error); }
+.form-message.success { background: var(--cyan-soft); color: var(--success); }
+.editor-actions { display: flex; align-items: center; gap: 24px; }
+.settings-workspace { padding: 42px var(--gutter) var(--section-y); }
+.bootstrap-admins { margin-bottom: 18px; padding: 14px; border: 1px solid var(--line); }
+.bootstrap-admins span, .bootstrap-admins small { display: block; }
+.bootstrap-admins span { margin-bottom: 8px; color: var(--accent-on-light); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.check-field { flex-direction: row !important; align-items: center; }
+.check-field input { width: 20px; min-height: 20px; }
+.role-guide p { margin: 7px 0 0; font-size: 12px; }
 
 @media (max-width: 1120px) {
   .header nav { gap: 24px; }
@@ -428,6 +473,10 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
   .footer-top { grid-template-columns: 1fr 1fr; }
   .inquiry-list article { grid-template-columns: 1fr; }
   .inquiry-list header, .inquiry-list footer { grid-column: 1; }
+  .content-layout, .settings-workspace { grid-template-columns: 1fr; }
+  .content-list, .settings-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+  .content-list > .button, .settings-list > .button, .content-list > p, .bootstrap-admins { grid-column: 1 / -1; }
+  .content-list > button:not(.button), .settings-list > button:not(.button) { border: 1px solid var(--line); }
 }
 
 @media (max-width: 640px) {
@@ -502,6 +551,16 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
   .admin-toolbar select { width: 100%; }
   .inquiry-list header, .inquiry-list footer { align-items: flex-start; flex-direction: column; }
   .inquiry-list code { overflow-wrap: anywhere; }
+  .admin-navigation { padding-inline: 0; }
+  .admin-navigation a { padding-inline: 18px; }
+  .admin-hub { grid-template-columns: 1fr; }
+  .admin-hub a { min-height: 170px; border: 1px solid var(--line); border-top: 0; }
+  .admin-hub a:first-child { border-top: 1px solid var(--line); }
+  .content-workspace { padding-top: 26px; }
+  .content-list, .settings-list { grid-template-columns: 1fr; }
+  .editor-grid { grid-template-columns: 1fr; }
+  .content-editor fieldset { padding: 20px 16px; }
+  .editor-actions { align-items: flex-start; flex-direction: column; }
   [lang^="zh"] .hero-copy { min-height: 650px; padding-top: 62px; }
   [lang^="zh"] .hero h1 { max-width: 100%; font-size: clamp(43px, 12.5vw, 58px); line-height: 1.16; }
   [lang^="zh"] .section-intro h2,

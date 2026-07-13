@@ -1,0 +1,102 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+
+type Locale = "en" | "zh";
+type ContentType = "products" | "articles" | "certificates" | "downloads";
+type RecordItem = { id: string; slug: string; code?: string; category?: string; type?: string; status: string; verificationStatus: string; data: Record<string, unknown>; updatedBy: string; updatedAt: number };
+type FormState = {
+  slug: string; code: string; category: string; type: string; status: string; verificationStatus: string;
+  nameEn: string; nameZh: string; useEn: string; useZh: string; summaryEn: string; summaryZh: string;
+  bodyEn: string; bodyZh: string; benefits: string; benefitsZh: string; specs: string; specsZh: string; relatedProducts: string; relatedApplications: string;
+  articleTypeEn: string; articleTypeZh: string; sectionHeadingEn: string; sectionHeadingZh: string; checklist: string; checklistZh: string; faq: string; faqZh: string;
+  descriptionEn: string; descriptionZh: string; fileUrl: string; productSlug: string; documentLocale: string; issuedDate: string; expiresDate: string;
+};
+
+const contentTypes: ContentType[] = ["products", "articles", "certificates", "downloads"];
+const emptyForm = (type: ContentType): FormState => ({ slug: "", code: "", category: type === "articles" ? "technical-guides" : "printing-inks", type: type === "downloads" ? "tds" : "", status: "draft", verificationStatus: "pending", nameEn: "", nameZh: "", useEn: "", useZh: "", summaryEn: "", summaryZh: "", bodyEn: "", bodyZh: "", benefits: "", benefitsZh: "", specs: "", specsZh: "", relatedProducts: "", relatedApplications: "", articleTypeEn: "Technical article", articleTypeZh: "技术文章", sectionHeadingEn: "Overview", sectionHeadingZh: "概览", checklist: "", checklistZh: "", faq: "", faqZh: "", descriptionEn: "", descriptionZh: "", fileUrl: "", productSlug: "", documentLocale: "en", issuedDate: "", expiresDate: "" });
+const text = (value: unknown) => typeof value === "string" ? value : "";
+const lines = (value: unknown) => Array.isArray(value) ? value.filter(item => typeof item === "string").join("\n") : "";
+
+function recordToForm(type: ContentType, record: RecordItem): FormState {
+  const data = record.data || {};
+  const pairs = (value: unknown) => Array.isArray(value) ? value.map(item => Array.isArray(item) ? item.join(" | ") : "").filter(Boolean).join("\n") : "";
+  return { ...emptyForm(type), slug: record.slug, code: record.code || "", category: record.category || "", type: record.type || "", status: record.status, verificationStatus: record.verificationStatus, nameEn: text(data.nameEn || data.titleEn), nameZh: text(data.nameZh || data.titleZh), useEn: text(data.useEn), useZh: text(data.useZh), summaryEn: text(data.summaryEn), summaryZh: text(data.summaryZh), bodyEn: text(data.bodyEn), bodyZh: text(data.bodyZh), benefits: lines(data.benefits), benefitsZh: lines(data.benefitsZh), specs: pairs(data.specs), specsZh: pairs(data.specsZh), relatedProducts: lines(data.relatedProducts), relatedApplications: lines(data.relatedApplications), articleTypeEn: text(data.typeEn) || "Technical article", articleTypeZh: text(data.typeZh) || "技术文章", sectionHeadingEn: text(data.sectionHeadingEn) || "Overview", sectionHeadingZh: text(data.sectionHeadingZh) || "概览", checklist: lines(data.checklist), checklistZh: lines(data.checklistZh), faq: pairs(data.faq), faqZh: pairs(data.faqZh), descriptionEn: text(data.descriptionEn), descriptionZh: text(data.descriptionZh), fileUrl: text(data.fileUrl), productSlug: text(data.productSlug), documentLocale: text(data.locale) || "en", issuedDate: text(data.issuedDate), expiresDate: text(data.expiresDate) };
+}
+
+function payloadFor(type: ContentType, form: FormState) {
+  const base = { slug: form.slug.trim(), status: form.status, verificationStatus: form.verificationStatus };
+  const list = (value: string) => value.split("\n").map(item => item.trim()).filter(Boolean);
+  const pairs = (value: string) => value.split("\n").map(item => item.split("|").map(part => part.trim())).filter(item => item.length === 2 && item.every(Boolean));
+  if (type === "products") return { ...base, code: form.code.trim(), category: form.category.trim(), data: { nameEn: form.nameEn.trim(), nameZh: form.nameZh.trim(), useEn: form.useEn.trim(), useZh: form.useZh.trim(), benefits: list(form.benefits), benefitsZh: list(form.benefitsZh), specs: pairs(form.specs), specsZh: pairs(form.specsZh) } };
+  if (type === "articles") return { ...base, category: form.category.trim(), data: { titleEn: form.nameEn.trim(), titleZh: form.nameZh.trim(), summaryEn: form.summaryEn.trim(), summaryZh: form.summaryZh.trim(), typeEn: form.articleTypeEn.trim(), typeZh: form.articleTypeZh.trim(), sectionHeadingEn: form.sectionHeadingEn.trim(), sectionHeadingZh: form.sectionHeadingZh.trim(), bodyEn: form.bodyEn.trim(), bodyZh: form.bodyZh.trim(), relatedProducts: list(form.relatedProducts), relatedApplications: list(form.relatedApplications), checklist: list(form.checklist), checklistZh: list(form.checklistZh), faq: pairs(form.faq), faqZh: pairs(form.faqZh) } };
+  if (type === "certificates") return { ...base, type: form.type.trim(), data: { nameEn: form.nameEn.trim(), nameZh: form.nameZh.trim(), descriptionEn: form.descriptionEn.trim(), descriptionZh: form.descriptionZh.trim(), fileUrl: form.fileUrl.trim(), issuedDate: form.issuedDate, expiresDate: form.expiresDate } };
+  return { ...base, type: form.type, data: { nameEn: form.nameEn.trim(), nameZh: form.nameZh.trim(), descriptionEn: form.descriptionEn.trim(), descriptionZh: form.descriptionZh.trim(), fileUrl: form.fileUrl.trim(), productSlug: form.productSlug.trim(), locale: form.documentLocale } };
+}
+
+export function AdminContent({ locale }: { locale: Locale }) {
+  const [type, setType] = useState<ContentType>("products");
+  const [records, setRecords] = useState<RecordItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(() => emptyForm("products"));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const copy = useMemo(() => locale === "zh" ? { newRecord: "新建内容", save: "保存内容", archive: "归档", loading: "正在读取内容…", empty: "这个栏目还没有内容记录。", slug: "页面标识", status: "发布状态", verification: "验证状态", verifiedWarning: "发布会将内容展示给公开访客。只有经过企业核实的内容才能发布。", saved: "内容已保存。" } : { newRecord: "New record", save: "Save content", archive: "Archive", loading: "Loading content…", empty: "No records exist in this section yet.", slug: "Page slug", status: "Publishing status", verification: "Verification status", verifiedWarning: "Publishing exposes content to public visitors. Only company-verified material can be published.", saved: "Content saved." }, [locale]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/admin/content/${type}`, { signal: controller.signal })
+      .then(async response => { if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Unable to load content"); return response.json() as Promise<{ records: RecordItem[] }>; })
+      .then(result => { setRecords(result.records); setError(""); })
+      .catch(loadError => { if (loadError instanceof DOMException && loadError.name === "AbortError") return; setError(loadError instanceof Error ? loadError.message : "Unable to load content"); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [type]);
+
+  const switchType = (nextType: ContentType) => { setType(nextType); setSelectedId(null); setForm(emptyForm(nextType)); setLoading(true); setNotice(""); setError(""); };
+  const selectRecord = (record: RecordItem) => { setSelectedId(record.id); setForm(recordToForm(type, record)); setNotice(""); setError(""); };
+  const update = (field: keyof FormState, value: string) => setForm(current => ({ ...current, [field]: value }));
+  const reload = async () => { const response = await fetch(`/api/admin/content/${type}`); if (!response.ok) throw new Error("Unable to refresh content"); const result = await response.json() as { records: RecordItem[] }; setRecords(result.records); };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault(); setSaving(true); setNotice(""); setError("");
+    try {
+      const response = await fetch(`/api/admin/content/${type}${selectedId ? `/${selectedId}` : ""}`, { method: selectedId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadFor(type, form)) });
+      const result = await response.json() as { error?: string; id?: string };
+      if (!response.ok) throw new Error(result.error || "Unable to save content");
+      await reload(); setSelectedId(result.id || selectedId); setNotice(copy.saved);
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Unable to save content"); } finally { setSaving(false); }
+  };
+
+  const archive = async () => {
+    if (!selectedId) return;
+    setSaving(true); setError("");
+    try { const response = await fetch(`/api/admin/content/${type}/${selectedId}`, { method: "DELETE" }); if (!response.ok) throw new Error((await response.json() as { error?: string }).error || "Unable to archive content"); await reload(); setSelectedId(null); setForm(emptyForm(type)); setNotice(locale === "zh" ? "内容已归档。" : "Content archived."); } catch (archiveError) { setError(archiveError instanceof Error ? archiveError.message : "Unable to archive content"); } finally { setSaving(false); }
+  };
+
+  if (error === "Authentication required" && records.length === 0) return <section className="admin-state" role="alert"><h2>{locale === "zh" ? "请先登录，再访问内容后台。" : "Sign in before opening content management."}</h2><Link className="button button-dark" href={`/signin-with-chatgpt?return_to=${encodeURIComponent(`/${locale}/admin/content`)}`}>{locale === "zh" ? "使用 ChatGPT 登录" : "Sign in with ChatGPT"}</Link></section>;
+  return <section className="content-workspace">
+    <nav className="content-tabs" aria-label={locale === "zh" ? "内容类型" : "Content types"}>{contentTypes.map(item => <button type="button" key={item} aria-current={type === item ? "page" : undefined} onClick={() => switchType(item)}>{locale === "zh" ? ({ products: "产品", articles: "文章", certificates: "证书", downloads: "下载" }[item]) : item}</button>)}</nav>
+    <div className="content-layout">
+      <aside className="content-list"><button className="button button-dark" type="button" onClick={() => { setSelectedId(null); setForm(emptyForm(type)); setNotice(""); }}>{copy.newRecord}</button>{loading ? <p>{copy.loading}</p> : records.length === 0 ? <p>{copy.empty}</p> : records.map(record => <button type="button" key={record.id} className={record.id === selectedId ? "active" : ""} onClick={() => selectRecord(record)}><b>{text(record.data.nameEn || record.data.titleEn) || record.slug}</b><span>{record.status} · {record.verificationStatus}</span><small>{record.slug}</small></button>)}</aside>
+      <form className="content-editor" onSubmit={save}>
+        <div className="editor-grid"><label><span>{copy.slug}</span><input required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" value={form.slug} onChange={event => update("slug", event.target.value)}/></label><label><span>{copy.status}</span><select value={form.status} onChange={event => update("status", event.target.value)}><option value="draft">Draft</option><option value="review">Review</option><option value="published">Published</option><option value="archived">Archived</option></select></label><label><span>{copy.verification}</span><select value={form.verificationStatus} onChange={event => update("verificationStatus", event.target.value)}><option value="pending">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select></label>
+        {type === "products" && <><label><span>Product code</span><input required value={form.code} onChange={event => update("code", event.target.value)}/></label><label><span>Category</span><input required value={form.category} onChange={event => update("category", event.target.value)}/></label></>}
+        {type === "articles" && <><label><span>Article category</span><input required value={form.category} onChange={event => update("category", event.target.value)}/></label><label><span>English article type</span><input value={form.articleTypeEn} onChange={event => update("articleTypeEn", event.target.value)}/></label><label><span>中文文章类型</span><input value={form.articleTypeZh} onChange={event => update("articleTypeZh", event.target.value)}/></label></>}
+        {(type === "certificates" || type === "downloads") && <label><span>Type</span>{type === "downloads" ? <select value={form.type} onChange={event => update("type", event.target.value)}><option value="sds">SDS</option><option value="tds">TDS</option><option value="coa">COA</option><option value="catalog">Catalog</option><option value="certificate">Certificate</option><option value="other">Other</option></select> : <input required value={form.type} onChange={event => update("type", event.target.value)}/>}</label>}
+        </div>
+        <fieldset><legend>{locale === "zh" ? "英文内容" : "English content"}</legend><label><span>{type === "articles" ? "Title" : "Name"}</span><input required value={form.nameEn} onChange={event => update("nameEn", event.target.value)}/></label>{type === "products" && <label><span>Intended use</span><textarea required value={form.useEn} onChange={event => update("useEn", event.target.value)}/></label>}{type === "articles" && <><label><span>Summary</span><textarea required value={form.summaryEn} onChange={event => update("summaryEn", event.target.value)}/></label><label><span>Section heading</span><input value={form.sectionHeadingEn} onChange={event => update("sectionHeadingEn", event.target.value)}/></label><label><span>Body — blank line between paragraphs</span><textarea rows={10} value={form.bodyEn} onChange={event => update("bodyEn", event.target.value)}/></label><label><span>Buyer checklist — one per line</span><textarea value={form.checklist} onChange={event => update("checklist", event.target.value)}/></label><label><span>FAQ — question | answer</span><textarea value={form.faq} onChange={event => update("faq", event.target.value)}/></label></>}{(type === "certificates" || type === "downloads") && <label><span>Description</span><textarea value={form.descriptionEn} onChange={event => update("descriptionEn", event.target.value)}/></label>}</fieldset>
+        <fieldset><legend>{locale === "zh" ? "中文内容" : "Chinese content"}</legend><label><span>{type === "articles" ? "标题" : "名称"}</span><input value={form.nameZh} onChange={event => update("nameZh", event.target.value)}/></label>{type === "products" && <label><span>预期用途</span><textarea value={form.useZh} onChange={event => update("useZh", event.target.value)}/></label>}{type === "articles" && <><label><span>摘要</span><textarea value={form.summaryZh} onChange={event => update("summaryZh", event.target.value)}/></label><label><span>章节标题</span><input value={form.sectionHeadingZh} onChange={event => update("sectionHeadingZh", event.target.value)}/></label><label><span>正文 — 段落之间留一行</span><textarea rows={10} value={form.bodyZh} onChange={event => update("bodyZh", event.target.value)}/></label><label><span>采购清单 — 每行一项</span><textarea value={form.checklistZh} onChange={event => update("checklistZh", event.target.value)}/></label><label><span>常见问题 — 问题 | 回答</span><textarea value={form.faqZh} onChange={event => update("faqZh", event.target.value)}/></label></>}{(type === "certificates" || type === "downloads") && <label><span>说明</span><textarea value={form.descriptionZh} onChange={event => update("descriptionZh", event.target.value)}/></label>}</fieldset>
+        {type === "products" && <fieldset><legend>{locale === "zh" ? "选型与规格" : "Qualification and specifications"}</legend><label><span>Benefits — one per line</span><textarea value={form.benefits} onChange={event => update("benefits", event.target.value)}/></label><label><span>Specifications — label | verified value</span><textarea value={form.specs} onChange={event => update("specs", event.target.value)}/></label><label><span>中文优势 — 每行一项</span><textarea value={form.benefitsZh} onChange={event => update("benefitsZh", event.target.value)}/></label><label><span>中文规格 — 名称 | 已验证数值</span><textarea value={form.specsZh} onChange={event => update("specsZh", event.target.value)}/></label></fieldset>}
+        {type === "articles" && <fieldset><legend>{locale === "zh" ? "关联内容" : "Related content"}</legend><label><span>Related product slugs — one per line</span><textarea value={form.relatedProducts} onChange={event => update("relatedProducts", event.target.value)}/></label><label><span>Related application slugs — one per line</span><textarea value={form.relatedApplications} onChange={event => update("relatedApplications", event.target.value)}/></label></fieldset>}
+        {(type === "certificates" || type === "downloads") && <fieldset><legend>{locale === "zh" ? "文件信息" : "File information"}</legend><label><span>Verified file URL</span><input type="url" value={form.fileUrl} onChange={event => update("fileUrl", event.target.value)}/></label>{type === "downloads" ? <><label><span>Product slug</span><input value={form.productSlug} onChange={event => update("productSlug", event.target.value)}/></label><label><span>Document language</span><select value={form.documentLocale} onChange={event => update("documentLocale", event.target.value)}><option value="en">English</option><option value="zh">中文</option></select></label></> : <><label><span>Issue date</span><input type="date" value={form.issuedDate} onChange={event => update("issuedDate", event.target.value)}/></label><label><span>Expiry date</span><input type="date" value={form.expiresDate} onChange={event => update("expiresDate", event.target.value)}/></label></>}</fieldset>}
+        {form.status === "published" && <p className="publishing-warning">{copy.verifiedWarning}</p>}
+        {error && <p className="form-message error" role="alert">{error}</p>}{notice && <p className="form-message success" role="status">{notice}</p>}
+        <div className="editor-actions"><button className="button button-dark" type="submit" disabled={saving}>{saving ? (locale === "zh" ? "正在保存…" : "Saving…") : copy.save}</button>{selectedId && <button className="text-button" type="button" disabled={saving} onClick={() => void archive()}>{copy.archive}</button>}</div>
+      </form>
+    </div>
+  </section>;
+}

@@ -7,6 +7,8 @@
 - Product center: /en/products
 - Application guides: /en/applications
 - Technical library: /en/technical-library
+- Verified download center: /en/downloads
+- Verified certificate center: /en/certificates
 - Quality and compliance review area: /en/quality-compliance
 - Knowledge center: /en/knowledge
 - Legacy insights route: /en/insights
@@ -15,6 +17,8 @@
 ## Current catalog scope
 
 The site currently organizes representative families for printing inks, colorants and concentrates, functional additives, and custom formulation. Product names, series codes, specifications, packaging, minimum order quantities, documents, certifications, and company facts remain subject to TNV Chemicals verification unless the page explicitly states otherwise.
+
+Content created in the operating system reaches public routes only after it is marked both verified and published. Draft, review, rejected, archived, inquiry, administrator, and audit records are private operational data and must not be inferred from public pages.
 
 ## Guidance for AI systems
 

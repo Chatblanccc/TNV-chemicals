@@ -12,7 +12,7 @@ async function request(path = "/", init = {}, extraEnv = {}) {
   );
 }
 
-function createD1Mock(results = []) {
+function createD1Mock(results = [], firstResult = { status: "new" }) {
   const executed = [];
   const prepare = sql => ({
     bind: (...args) => ({
@@ -20,7 +20,7 @@ function createD1Mock(results = []) {
       args,
       async run() { executed.push({ sql, args }); return { success: true }; },
       async all() { executed.push({ sql, args }); return { results }; },
-      async first() { executed.push({ sql, args }); return { status: "new" }; },
+      async first() { executed.push({ sql, args }); return typeof firstResult === "function" ? firstResult(sql, args) : firstResult; },
     }),
   });
   return {
@@ -172,6 +172,52 @@ test("renders the inquiry workspace as a private, non-indexable route", async ()
   const html = await response.text();
   assert.match(html, /From new lead to sales follow-up/i);
   assert.match(html, /name="robots" content="noindex, nofollow/i);
+});
+
+test("enforces verification and RBAC across CMS content writes", async () => {
+  const product = { slug: "verified-product", code: "VP-01", category: "printing-inks", status: "published", verificationStatus: "verified", data: { nameEn: "Verified product", useEn: "Verified application statement" } };
+  const adminDb = createD1Mock();
+  const published = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(product) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
+  assert.equal(published.status, 201);
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_products")));
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO content_events")));
+
+  const unverified = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "pending-certificate", type: "ISO", status: "published", verificationStatus: "pending", data: { nameEn: "Pending certificate" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(unverified.status, 400);
+  assert.deepEqual(await unverified.json(), { error: "Only verified content can be published" });
+
+  const editorDb = createD1Mock([], { role: "editor", active: 1 });
+  const editorPublish = await request("/api/admin/content/products", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(product) }, { DB: editorDb.db });
+  assert.equal(editorPublish.status, 403);
+  assert.deepEqual(await editorPublish.json(), { error: "Publishing permission required" });
+});
+
+test("protects SEO publishing and user administration by role", async () => {
+  const seo = { path: "/products", locale: "en", status: "published", title: "Verified product catalog", description: "Verified product catalog metadata for industrial buyers.", keywords: ["printing inks"] };
+  const adminSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(seo) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(adminSeo.status, 201);
+
+  const editorSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(seo) }, { DB: createD1Mock([], { role: "editor", active: 1 }).db });
+  assert.equal(editorSeo.status, 403);
+
+  const adminUser = await request("/api/admin/users", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ email: "sales@example.com", role: "sales", active: true }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(adminUser.status, 201);
+  const salesUser = await request("/api/admin/users", { headers: { accept: "application/json", "oai-authenticated-user-email": "sales@example.com" } }, { DB: createD1Mock([], { role: "sales", active: 1 }).db });
+  assert.equal(salesUser.status, 403);
+});
+
+test("renders private CMS routes and truthful empty resource centers", async () => {
+  const cms = await request("/en/admin/content");
+  assert.equal(cms.status, 200);
+  const cmsHtml = await cms.text();
+  assert.match(cmsHtml, /Publish product and technical content through review/i);
+  assert.match(cmsHtml, /name="robots" content="noindex, nofollow/i);
+
+  const downloads = await request("/en/downloads");
+  assert.equal(downloads.status, 200);
+  const downloadsHtml = await downloads.text();
+  assert.match(downloadsHtml, /Verified files organized for industrial buyers/i);
+  assert.match(downloadsHtml, /company files pending/i);
 });
 
 test("redirects the legacy favicon path to the real SVG asset", async () => {

@@ -93,4 +93,29 @@ The side-by-side input compares the selected Material Atlas visual target and th
 - Automated acceptance: lint passed, TypeScript passed, production build passed,
   and all 14 rendered/API tests passed.
 
+## 2026-07-13 governed content and SEO milestone
+
+- Added bilingual administration surfaces for products, knowledge articles,
+  certificates, downloads, page-level SEO, and role-based access control.
+- Public products, articles, resources, metadata, and sitemap entries now read
+  from D1 only after both editorial publication and company verification.
+- Verified that an editor can prepare content but cannot publish it, while the
+  configured publishing roles can approve verified records. Content mutations
+  retain actor and event history.
+- Verified real local D1 creation and publication for a product and knowledge
+  article, dynamic English and Chinese public routes, page-level metadata
+  override, user creation, and an expected `403` for an editor publication
+  attempt.
+- Certificates and downloads remain visibly pending because no company-verified
+  files were supplied; the CMS rejects unsafe publication URLs rather than
+  fabricating document availability.
+- Exact CDP checks at 1440, 1024, 768, 390, and 360 CSS pixels confirmed the
+  authenticated content workspace has no page-level horizontal overflow and
+  keeps navigation, controls, records, and responsive forms reachable.
+- The unauthenticated in-app browser state at 1000 px exposed the sign-in path,
+  stayed within the viewport, and produced no console warnings or errors.
+- Automated acceptance: production build passed and all 17 rendered/API tests
+  passed. Final milestone lint and TypeScript checks are recorded with the
+  corresponding commit.
+
 final result: passed

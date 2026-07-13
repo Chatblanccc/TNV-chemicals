@@ -27,12 +27,33 @@ function storageError(error: unknown): Response {
   return Response.json({ error: unavailable ? "Inquiry storage is not ready" : "Inquiry storage failed" }, { status: 503 });
 }
 
-function requireAdmin(request: Request, env: Env): Response | string {
+type AdminRole = "admin" | "marketing" | "sales" | "editor";
+type AdminPermission = "inquiries:read" | "inquiries:write" | "content:read" | "content:write" | "content:publish" | "users:manage";
+type AdminSession = { email: string; role: AdminRole };
+
+const rolePermissions: Record<AdminRole, ReadonlySet<AdminPermission>> = {
+  admin: new Set(["inquiries:read", "inquiries:write", "content:read", "content:write", "content:publish", "users:manage"]),
+  marketing: new Set(["inquiries:read", "content:read", "content:write", "content:publish"]),
+  sales: new Set(["inquiries:read", "inquiries:write", "content:read"]),
+  editor: new Set(["content:read", "content:write"]),
+};
+
+async function requireAdmin(request: Request, env: Env, permission: AdminPermission): Promise<Response | AdminSession> {
   const email = request.headers.get("oai-authenticated-user-email")?.trim().toLowerCase();
   if (!email) return Response.json({ error: "Authentication required" }, { status: 401 });
   const allowed = new Set((env.ADMIN_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean));
-  if (!allowed.has(email)) return Response.json({ error: "Admin access is not configured for this account" }, { status: 403 });
-  return email;
+  let role: AdminRole | null = allowed.has(email) ? "admin" : null;
+  if (!role && env.DB) {
+    try {
+      const user = await env.DB.prepare("SELECT role, active FROM admin_users WHERE email = ?").bind(email).first<{ role: AdminRole; active: number }>();
+      if (user?.active) role = user.role;
+    } catch {
+      // Bootstrap allowlist remains available before the RBAC migration is applied.
+    }
+  }
+  if (!role) return Response.json({ error: "Admin access is not configured for this account" }, { status: 403 });
+  if (!rolePermissions[role].has(permission)) return Response.json({ error: "Insufficient admin permission" }, { status: 403 });
+  return { email, role };
 }
 
 const securityPolicy = [
@@ -138,7 +159,7 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleAdminInquiries(request: Request, env: Env): Promise<Response> {
-  const admin = requireAdmin(request, env);
+  const admin = await requireAdmin(request, env, request.method === "PATCH" ? "inquiries:write" : "inquiries:read");
   if (admin instanceof Response) return admin;
   if (!env.DB) return Response.json({ error: "Inquiry storage is not configured" }, { status: 503 });
   const url = new URL(request.url);
@@ -166,7 +187,7 @@ async function handleAdminInquiries(request: Request, env: Env): Promise<Respons
       const now = Date.now();
       await env.DB.batch([
         env.DB.prepare("UPDATE inquiries SET status = ?, updated_at = ? WHERE id = ?").bind(payload.status, now, match[1]),
-        env.DB.prepare("INSERT INTO inquiry_events (id, inquiry_id, event_type, from_status, to_status, actor_email, created_at) VALUES (?, ?, 'status_changed', ?, ?, ?, ?)").bind(crypto.randomUUID(), match[1], current.status, payload.status, admin, now),
+        env.DB.prepare("INSERT INTO inquiry_events (id, inquiry_id, event_type, from_status, to_status, actor_email, created_at) VALUES (?, ?, 'status_changed', ?, ?, ?, ?)").bind(crypto.randomUUID(), match[1], current.status, payload.status, admin.email, now),
       ]);
       return Response.json({ ok: true, id: match[1], status: payload.status });
     } catch (error) {
@@ -174,6 +195,236 @@ async function handleAdminInquiries(request: Request, env: Env): Promise<Respons
     }
   }
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: match ? "PATCH" : "GET" } });
+}
+
+const contentTypes = ["products", "articles", "certificates", "downloads"] as const;
+type ContentType = typeof contentTypes[number];
+type ContentStatus = "draft" | "review" | "published" | "archived";
+type VerificationStatus = "pending" | "verified" | "rejected";
+type ContentInput = {
+  slug?: string;
+  code?: string;
+  category?: string;
+  type?: string;
+  status?: ContentStatus;
+  verificationStatus?: VerificationStatus;
+  data?: Record<string, unknown>;
+};
+
+const contentConfig: Record<ContentType, { table: string; entity: "product" | "article" | "certificate" | "download" }> = {
+  products: { table: "cms_products", entity: "product" },
+  articles: { table: "cms_articles", entity: "article" },
+  certificates: { table: "certificates", entity: "certificate" },
+  downloads: { table: "downloads", entity: "download" },
+};
+const contentStatuses: ContentStatus[] = ["draft", "review", "published", "archived"];
+const verificationStatuses: VerificationStatus[] = ["pending", "verified", "rejected"];
+const downloadTypes = ["sds", "tds", "coa", "catalog", "certificate", "other"];
+
+function isSafeFileUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  try { return new URL(value).protocol === "https:"; } catch { return false; }
+}
+
+function parseStoredJson(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") return {};
+  try { const parsed = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}; } catch { return {}; }
+}
+
+function normalizeContentRows(rows: Array<Record<string, unknown>>) {
+  return rows.map(row => ({ ...row, data: parseStoredJson(row.dataJson), dataJson: undefined }));
+}
+
+function validateContentInput(type: ContentType, input: ContentInput): string | null {
+  if (!input.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.slug)) return "Use a lowercase, hyphenated slug";
+  if (!input.status || !contentStatuses.includes(input.status)) return "Invalid content status";
+  if (!input.verificationStatus || !verificationStatuses.includes(input.verificationStatus)) return "Invalid verification status";
+  if (!input.data || typeof input.data !== "object" || Array.isArray(input.data)) return "Content data is required";
+  if (input.status === "published" && input.verificationStatus !== "verified") return "Only verified content can be published";
+  if (type === "products" && (!input.code?.trim() || !input.category?.trim() || typeof input.data.nameEn !== "string" || typeof input.data.useEn !== "string")) return "Product code, category, English name and use are required";
+  if (type === "articles" && (!input.category?.trim() || typeof input.data.titleEn !== "string" || typeof input.data.summaryEn !== "string")) return "Article category, English title and summary are required";
+  if (type === "certificates" && (!input.type?.trim() || typeof input.data.nameEn !== "string")) return "Certificate type and English name are required";
+  if (type === "downloads" && (!input.type || !downloadTypes.includes(input.type) || typeof input.data.nameEn !== "string")) return "Download type and English name are required";
+  if ((type === "certificates" || type === "downloads") && input.status === "published" && !isSafeFileUrl(input.data.fileUrl)) return "A verified HTTPS or site-relative file URL is required before publication";
+  return null;
+}
+
+function contentWriteError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : "";
+  if (message.toLowerCase().includes("unique")) return Response.json({ error: "That slug is already in use" }, { status: 409 });
+  return storageError(error);
+}
+
+async function handleAdminContent(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/api\/admin\/content\/([^/]+)(?:\/([^/]+))?$/);
+  const type = match?.[1] as ContentType | undefined;
+  const recordId = match?.[2];
+  if (!type || !contentTypes.includes(type)) return Response.json({ error: "Unknown content type" }, { status: 404 });
+  const requiredPermission: AdminPermission = request.method === "GET" ? "content:read" : "content:write";
+  const admin = await requireAdmin(request, env, requiredPermission);
+  if (admin instanceof Response) return admin;
+  if (!env.DB) return Response.json({ error: "Content storage is not configured" }, { status: 503 });
+  const config = contentConfig[type];
+
+  if (request.method === "GET" && !recordId) {
+    const status = url.searchParams.get("status") || "";
+    if (status && !contentStatuses.includes(status as ContentStatus)) return Response.json({ error: "Invalid content status" }, { status: 400 });
+    const extra = type === "products" ? ", code, category" : type === "articles" ? ", category" : ", type";
+    try {
+      const result = await env.DB.prepare(`SELECT id, slug, status, verification_status AS verificationStatus, data_json AS dataJson, updated_by AS updatedBy, published_at AS publishedAt, created_at AS createdAt, updated_at AS updatedAt${extra} FROM ${config.table} WHERE (? = '' OR status = ?) ORDER BY updated_at DESC LIMIT 200`).bind(status, status).all<Record<string, unknown>>();
+      return Response.json({ type, records: normalizeContentRows(result.results) });
+    } catch (error) { return storageError(error); }
+  }
+
+  if (request.method === "POST" && !recordId) {
+    let input: ContentInput;
+    try { input = await request.json() as ContentInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    const error = validateContentInput(type, input);
+    if (error) return Response.json({ error }, { status: 400 });
+    if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    const publishedAt = input.status === "published" ? now : null;
+    const dataJson = JSON.stringify(input.data);
+    const eventAction = input.status === "published" ? "published" : "created";
+    const insert = type === "products"
+      ? env.DB.prepare("INSERT INTO cms_products (id, slug, code, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+      : type === "articles"
+        ? env.DB.prepare("INSERT INTO cms_articles (id, slug, category, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+        : type === "certificates"
+          ? env.DB.prepare("INSERT INTO certificates (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now)
+          : env.DB.prepare("INSERT INTO downloads (id, slug, type, status, verification_status, data_json, updated_by, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, now);
+    try {
+      await env.DB.batch([insert, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, id, eventAction, admin.email, now)]);
+      return Response.json({ ok: true, id, status: input.status }, { status: 201 });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+
+  if (request.method === "PATCH" && recordId) {
+    let input: ContentInput;
+    try { input = await request.json() as ContentInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    const error = validateContentInput(type, input);
+    if (error) return Response.json({ error }, { status: 400 });
+    if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    try {
+      const current = await env.DB.prepare(`SELECT status FROM ${config.table} WHERE id = ?`).bind(recordId).first<{ status: ContentStatus }>();
+      if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
+      const now = Date.now();
+      const publishedAt = input.status === "published" ? now : null;
+      const dataJson = JSON.stringify(input.data);
+      const update = type === "products"
+        ? env.DB.prepare("UPDATE cms_products SET slug = ?, code = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.code!.trim(), input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+        : type === "articles"
+          ? env.DB.prepare("UPDATE cms_articles SET slug = ?, category = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.category!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+          : type === "certificates"
+            ? env.DB.prepare("UPDATE certificates SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type!.trim(), input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId)
+            : env.DB.prepare("UPDATE downloads SET slug = ?, type = ?, status = ?, verification_status = ?, data_json = ?, updated_by = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(input.slug, input.type, input.status, input.verificationStatus, dataJson, admin.email, publishedAt, now, recordId);
+      const action = input.status === "published" && current.status !== "published" ? "published" : input.status === "archived" ? "archived" : current.status === "published" && input.status !== "published" ? "unpublished" : "updated";
+      await env.DB.batch([update, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), config.entity, recordId, action, admin.email, now)]);
+      return Response.json({ ok: true, id: recordId, status: input.status });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+
+  if (request.method === "DELETE" && recordId) {
+    try {
+      const current = await env.DB.prepare(`SELECT id FROM ${config.table} WHERE id = ?`).bind(recordId).first();
+      if (!current) return Response.json({ error: "Content record not found" }, { status: 404 });
+      const now = Date.now();
+      const result = await env.DB.batch([
+        env.DB.prepare(`UPDATE ${config.table} SET status = 'archived', published_at = NULL, updated_by = ?, updated_at = ? WHERE id = ?`).bind(admin.email, now, recordId),
+        env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, ?, ?, 'archived', ?, ?)").bind(crypto.randomUUID(), config.entity, recordId, admin.email, now),
+      ]);
+      return Response.json({ ok: true, id: recordId, status: "archived", result: result[0].success });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH, DELETE" : "GET, POST" } });
+}
+
+type SeoInput = { path?: string; locale?: "en" | "zh"; status?: "draft" | "published"; title?: string; description?: string; keywords?: string[] };
+
+function validateSeoInput(input: SeoInput): string | null {
+  if (!input.path?.startsWith("/") || input.path.startsWith("//") || input.path.startsWith("/admin/")) return "A public site path is required";
+  if (!input.locale || !["en", "zh"].includes(input.locale)) return "A supported locale is required";
+  if (!input.status || !["draft", "published"].includes(input.status)) return "Invalid SEO status";
+  if (!input.title?.trim() || input.title.trim().length > 160) return "SEO title must be 1 to 160 characters";
+  if (!input.description?.trim() || input.description.trim().length > 320) return "SEO description must be 1 to 320 characters";
+  if (!Array.isArray(input.keywords) || input.keywords.some(value => typeof value !== "string" || value.length > 80)) return "Keywords must be a list of short strings";
+  return null;
+}
+
+async function handleAdminSeo(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/api\/admin\/seo(?:\/([^/]+))?$/);
+  const recordId = match?.[1];
+  const admin = await requireAdmin(request, env, request.method === "GET" ? "content:read" : "content:write");
+  if (admin instanceof Response) return admin;
+  if (!env.DB) return Response.json({ error: "SEO storage is not configured" }, { status: 503 });
+  if (request.method === "GET" && !recordId) {
+    try {
+      const result = await env.DB.prepare("SELECT id, path, locale, status, title, description, keywords_json AS keywordsJson, updated_by AS updatedBy, created_at AS createdAt, updated_at AS updatedAt FROM seo_metadata ORDER BY path, locale").all<Record<string, unknown>>();
+      const records = result.results.map(row => ({ ...row, keywords: Array.isArray(JSON.parse(String(row.keywordsJson || "[]"))) ? JSON.parse(String(row.keywordsJson || "[]")) : [], keywordsJson: undefined }));
+      return Response.json({ records });
+    } catch (error) { return storageError(error); }
+  }
+  if ((request.method === "POST" && !recordId) || (request.method === "PATCH" && recordId)) {
+    let input: SeoInput;
+    try { input = await request.json() as SeoInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    const error = validateSeoInput(input);
+    if (error) return Response.json({ error }, { status: 400 });
+    if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    const id = recordId || crypto.randomUUID();
+    const now = Date.now();
+    if (recordId) {
+      try { if (!await env.DB.prepare("SELECT id FROM seo_metadata WHERE id = ?").bind(recordId).first()) return Response.json({ error: "SEO record not found" }, { status: 404 }); } catch (lookupError) { return storageError(lookupError); }
+    }
+    const statement = recordId
+      ? env.DB.prepare("UPDATE seo_metadata SET path = ?, locale = ?, status = ?, title = ?, description = ?, keywords_json = ?, updated_by = ?, updated_at = ? WHERE id = ?").bind(input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(input.keywords), admin.email, now, id)
+      : env.DB.prepare("INSERT INTO seo_metadata (id, path, locale, status, title, description, keywords_json, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(input.keywords), admin.email, now, now);
+    const action = input.status === "published" ? "published" : recordId ? "updated" : "created";
+    try {
+      await env.DB.batch([statement, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, 'seo', ?, ?, ?, ?)").bind(crypto.randomUUID(), id, action, admin.email, now)]);
+      return Response.json({ ok: true, id, status: input.status }, { status: recordId ? 200 : 201 });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH" : "GET, POST" } });
+}
+
+type AdminUserInput = { email?: string; role?: AdminRole; active?: boolean };
+
+async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const recordId = url.pathname.match(/^\/api\/admin\/users(?:\/([^/]+))?$/)?.[1];
+  const admin = await requireAdmin(request, env, "users:manage");
+  if (admin instanceof Response) return admin;
+  if (!env.DB) return Response.json({ error: "Admin storage is not configured" }, { status: 503 });
+  if (request.method === "GET" && !recordId) {
+    try {
+      const result = await env.DB.prepare("SELECT id, email, role, active, created_at AS createdAt, updated_at AS updatedAt FROM admin_users ORDER BY email").all();
+      return Response.json({ users: result.results, bootstrapAdmins: (env.ADMIN_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean) });
+    } catch (error) { return storageError(error); }
+  }
+  if ((request.method === "POST" && !recordId) || (request.method === "PATCH" && recordId)) {
+    let input: AdminUserInput;
+    try { input = await request.json() as AdminUserInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    const email = input.email?.trim().toLowerCase();
+    if (!email || !/^\S+@\S+\.\S+$/.test(email) || !input.role || !(input.role in rolePermissions) || typeof input.active !== "boolean") return Response.json({ error: "Valid email, role and active state are required" }, { status: 400 });
+    const id = recordId || crypto.randomUUID();
+    const now = Date.now();
+    if (recordId) {
+      try { if (!await env.DB.prepare("SELECT id FROM admin_users WHERE id = ?").bind(recordId).first()) return Response.json({ error: "Admin user not found" }, { status: 404 }); } catch (lookupError) { return storageError(lookupError); }
+    }
+    const statement = recordId
+      ? env.DB.prepare("UPDATE admin_users SET email = ?, role = ?, active = ?, updated_at = ? WHERE id = ?").bind(email, input.role, input.active ? 1 : 0, now, id)
+      : env.DB.prepare("INSERT INTO admin_users (id, email, role, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, email, input.role, input.active ? 1 : 0, now, now);
+    try {
+      await env.DB.batch([statement, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, 'admin_user', ?, 'role_changed', ?, ?)").bind(crypto.randomUUID(), id, admin.email, now)]);
+      return Response.json({ ok: true, id, email, role: input.role, active: input.active }, { status: recordId ? 200 : 201 });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH" : "GET, POST" } });
 }
 
 interface ExecutionContext {
@@ -194,6 +445,9 @@ const worker = {
     if (url.pathname === "/favicon.ico") return Response.redirect(new URL("/favicon.svg", request.url), 308);
     if (url.pathname === "/api/inquiry") return withResponseHeaders(await handleInquiry(request, env), request, env);
     if (url.pathname === "/api/admin/inquiries" || url.pathname.startsWith("/api/admin/inquiries/")) return withResponseHeaders(await handleAdminInquiries(request, env), request, env);
+    if (url.pathname.startsWith("/api/admin/content/")) return withResponseHeaders(await handleAdminContent(request, env), request, env);
+    if (url.pathname === "/api/admin/seo" || url.pathname.startsWith("/api/admin/seo/")) return withResponseHeaders(await handleAdminSeo(request, env), request, env);
+    if (url.pathname === "/api/admin/users" || url.pathname.startsWith("/api/admin/users/")) return withResponseHeaders(await handleAdminUsers(request, env), request, env);
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

@@ -9,9 +9,13 @@ type FinderProduct = {
   slug: string;
   code: string;
   name: string;
+  nameZh?: string;
   category: string;
   categoryName: string;
+  categoryNameZh?: string;
   use: string;
+  useZh?: string;
+  verificationStatus?: "pending" | "verified";
 };
 
 export function ProductFinder({ products, locale, initialQuery = "" }: { products: FinderProduct[]; locale: Locale; initialQuery?: string }) {
@@ -28,11 +32,11 @@ export function ProductFinder({ products, locale, initialQuery = "" }: { product
     placeholder: "Search product name, series code or application", all: "All families", results: "matching results",
     empty: "No matching product was found. Submit the application requirement so the right starting point can be qualified.", view: "View product", pending: "Technical data pending verification",
   };
-  const categories = useMemo(() => Array.from(new Map(products.map(product => [product.category, product.categoryName])).entries()), [products]);
+  const categories = useMemo(() => Array.from(new Map(products.map(product => [product.category, locale === "zh" ? (product.categoryNameZh || product.categoryName) : product.categoryName])).entries()), [locale, products]);
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase();
     return products.filter(product => {
-      const searchable = `${product.name} ${product.code} ${product.categoryName} ${product.use}`.toLocaleLowerCase();
+      const searchable = `${product.name} ${product.nameZh || ""} ${product.code} ${product.categoryName} ${product.categoryNameZh || ""} ${product.use} ${product.useZh || ""}`.toLocaleLowerCase();
       return (category === "all" || product.category === category) && (!term || searchable.includes(term));
     });
   }, [category, products, query]);
@@ -48,7 +52,7 @@ export function ProductFinder({ products, locale, initialQuery = "" }: { product
     </div>
     <div className="finder-summary" aria-live="polite"><b>{filtered.length}</b> {copy.results}</div>
     {filtered.length ? <div className="finder-results">{filtered.map(product => <Link key={product.slug} href={localizedPath(locale, `/products/${product.category}/${product.slug}`)}>
-      <span className="finder-code">{product.code}</span><div><h3>{product.name}</h3><p>{product.use}</p><small>{copy.pending}</small></div><span className="finder-link">{copy.view}<ArrowUpRight aria-hidden="true" size={17}/></span>
+      <span className="finder-code">{product.code}</span><div><h3>{locale === "zh" ? (product.nameZh || product.name) : product.name}</h3><p>{locale === "zh" ? (product.useZh || product.use) : product.use}</p><small>{product.verificationStatus === "verified" ? (locale === "zh" ? "企业已审核发布" : "Company-verified publication") : copy.pending}</small></div><span className="finder-link">{copy.view}<ArrowUpRight aria-hidden="true" size={17}/></span>
     </Link>)}</div> : <p className="finder-empty">{copy.empty}</p>}
   </section>;
 }

@@ -110,8 +110,39 @@ approved.
   durable lead.
 - `INQUIRY_WEBHOOK_TOKEN=...` optionally adds a bearer token to webhook calls.
 - `ADMIN_EMAILS=owner@example.com,sales@example.com` is the explicit,
-  comma-separated allowlist for `/en/admin/inquiries` and
-  `/zh/admin/inquiries`. Authentication alone does not grant admin access.
+  comma-separated bootstrap allowlist for the administration workspace.
+  Authentication alone does not grant admin access.
+
+## TNV content operations
+
+The private administration workspace uses the Material Atlas interface and D1
+as its durable source of truth:
+
+- `/en/admin/content` and `/zh/admin/content` manage products, knowledge
+  articles, certificates, and downloads.
+- `/en/admin/seo` and `/zh/admin/seo` manage page-level bilingual titles,
+  descriptions, and keywords.
+- `/en/admin/users` and `/zh/admin/users` manage the `admin`, `marketing`,
+  `sales`, and `editor` roles.
+- `/en/admin/inquiries` and `/zh/admin/inquiries` manage the inquiry pipeline.
+
+Content uses separate editorial and verification states. Only records with both
+`status=published` and `verification_status=verified` can appear on public
+routes. This prevents draft or unverified product claims, certificates, and
+technical files from leaking into the buyer experience. Certificate and
+download records also require an HTTPS or site-relative file URL before they can
+be published.
+
+Apply every Drizzle migration in `drizzle/` to the bound D1 database before
+using the administration workspace. Bootstrap administrators come from
+`ADMIN_EMAILS`; subsequent users and roles live in `admin_users`. All content
+writes and publication decisions are recorded in `content_events`.
+
+Published CMS products and articles merge into the seed catalog by slug, so
+existing public routes remain stable while verified content can progressively
+replace placeholders. Published page-level SEO overrides are applied at render
+time, and the launch-gated sitemap includes published dynamic routes. Admin
+routes remain noindex and are excluded from sitemap discovery.
 
 The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
 `area`, `company`, `country`, `requirement`, optional `productCode`, and
