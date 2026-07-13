@@ -47,7 +47,7 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
     "/certificates": "Certificate center", "/downloads": "Download center",
     "/about": "ABOUT TNV CHEMICALS", "/about/factory": "FACTORY", "/about/research-development": "RESEARCH & DEVELOPMENT",
     "/about/quality-control": "QUALITY CONTROL", "/insights": "Insights", "/knowledge": "Knowledge center", "/contact": "Contact",
-    "/request-quote": "Request a quote", "/admin": "Administration", "/admin/inquiries": "Inquiry management", "/admin/content": "Content management", "/admin/seo": "SEO management", "/admin/analytics": "Analytics", "/admin/users": "Access control", "/privacy-policy": "Privacy", "/terms": "Terms",
+    "/request-quote": "Request a quote", "/admin": "Administration", "/admin/inquiries": "Inquiry management", "/admin/content": "Content management", "/admin/seo": "SEO management", "/admin/redirects": "Redirect governance", "/admin/analytics": "Analytics", "/admin/users": "Access control", "/privacy-policy": "Privacy", "/terms": "Terms",
   };
   const contentArticle = article || knowledgeArticle;
   const articleCover = articleCoverMedia(contentArticle?.coverMediaKey);

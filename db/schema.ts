@@ -156,9 +156,22 @@ export const seoMetadata = sqliteTable("seo_metadata", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, table => [uniqueIndex("seo_metadata_path_locale_unique").on(table.path, table.locale), index("seo_metadata_status_idx").on(table.status, table.updatedAt)]);
 
+export const routeRedirects = sqliteTable("route_redirects", {
+  id: text("id").primaryKey(),
+  sourcePath: text("source_path").notNull(),
+  destinationPath: text("destination_path").notNull(),
+  status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
+  updatedBy: text("updated_by").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [
+  uniqueIndex("route_redirects_source_path_unique").on(table.sourcePath),
+  index("route_redirects_status_idx").on(table.status, table.updatedAt),
+]);
+
 export const contentEvents = sqliteTable("content_events", {
   id: text("id").primaryKey(),
-  entityType: text("entity_type", { enum: ["product", "category", "company_profile", "application", "article", "certificate", "download", "seo", "admin_user"] }).notNull(),
+  entityType: text("entity_type", { enum: ["product", "category", "company_profile", "application", "article", "certificate", "download", "seo", "redirect", "admin_user"] }).notNull(),
   entityId: text("entity_id").notNull(),
   action: text("action", { enum: ["created", "updated", "submitted", "published", "unpublished", "archived", "role_changed"] }).notNull(),
   actorEmail: text("actor_email").notNull(),

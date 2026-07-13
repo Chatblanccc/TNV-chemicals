@@ -325,6 +325,36 @@ final result: passed
   routes then returned 404. Lint, direct TypeScript checking, production build,
   and all 29 rendered/API tests passed.
 
+## 2026-07-13 governed permanent redirects
+
+- Added a normalized `route_redirects` D1 table and generated migration
+  `0008_confused_invaders.sql`, with unique source paths plus status/update
+  indexing. Redirect create, publish, update, archive, and actor activity is
+  retained in the shared content audit stream.
+- The API accepts locale-neutral canonical paths, locks a source after creation,
+  and requires publishing permission. A published destination must resolve to
+  the current public content graph; self-redirects, unknown targets, duplicate
+  sources, incoming chains, and outgoing chains are rejected.
+- Runtime resolution precedes page rendering for English and Chinese GET/HEAD
+  requests. Published records return HTTP 308, preserve the active locale and
+  query parameters, and fail open to normal routing before the migration exists.
+  The destination is rechecked at request time, so a later withdrawal does not
+  leave a redirect pointing at a known unavailable page; runtime also refuses a
+  chain if inconsistent or concurrently written records reach storage.
+- Added `/en/admin/redirects` and `/zh/admin/redirects` using the established
+  Material Atlas settings workspace. The editor exposes loading, empty, error,
+  success, draft, published, and archive states, with immutable-source and
+  canonical-destination guidance.
+- Real local D1/API QA published `/qa-retired-route-0713` to `/products`.
+  English and Chinese requests returned 308, and the English query string was
+  retained. A chained target and an unknown target both returned HTTP 400.
+  Archiving through the browser stopped the redirect and restored a truthful
+  404; the record and its audit events were then removed from local QA storage.
+- The selected redirect editor was checked at 1440, 1024, 768, 390, and 360 CSS
+  pixels. Source locking, publication warning, archive action, and path values
+  stayed reachable with `scrollWidth == clientWidth` at every size. Lint,
+  TypeScript, production build, and all 30 rendered/API tests passed.
+
 ## 2026-07-13 governed seed-content withdrawal
 
 - Product, category, application, and article seed fallbacks now follow CMS

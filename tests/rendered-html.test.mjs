@@ -588,6 +588,57 @@ test("protects SEO publishing and user administration by role", async () => {
   assert.equal(salesUser.status, 403);
 });
 
+test("governs permanent redirects without loops, chains or unpublished destinations", async () => {
+  const redirect = { sourcePath: "/products/legacy-family/legacy-product", destinationPath: "/products", status: "published" };
+  const adminDb = createD1Mock([], null);
+  const created = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(redirect) }, { ADMIN_EMAILS: "admin@example.com", DB: adminDb.db });
+  assert.equal(created.status, 201);
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("INSERT INTO route_redirects")));
+  assert.ok(adminDb.executed.some(statement => statement.sql.includes("'redirect'")));
+
+  const unknownDestination = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...redirect, sourcePath: "/old-unknown", destinationPath: "/not-public" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unknownDestination.status, 400);
+  assert.deepEqual(await unknownDestination.json(), { error: "A redirect can publish only when its destination is a current public canonical route" });
+
+  const chainedDestination = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...redirect, sourcePath: "/old-chain" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], { id: "destination-redirect" }).db });
+  assert.equal(chainedDestination.status, 400);
+  assert.deepEqual(await chainedDestination.json(), { error: "Destination must be the final canonical route, not another published redirect" });
+
+  const incomingChainDb = createD1Mock([], sql => sql.includes("destination_path = ?") ? { id: "incoming-redirect" } : null);
+  const incomingChain = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...redirect, sourcePath: "/products", destinationPath: "/applications" }) }, { ADMIN_EMAILS: "admin@example.com", DB: incomingChainDb.db });
+  assert.equal(incomingChain.status, 400);
+  assert.deepEqual(await incomingChain.json(), { error: "Source is already a published redirect destination; publishing would create a redirect chain" });
+
+  const selfRedirect = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ sourcePath: "/products", destinationPath: "/products", status: "draft" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(selfRedirect.status, 400);
+  assert.deepEqual(await selfRedirect.json(), { error: "Source and destination paths must be different" });
+
+  const immutableSource = await request("/api/admin/redirects/redirect-id", { method: "PATCH", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ sourcePath: "/changed-source", destinationPath: "/products", status: "draft" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], { sourcePath: redirect.sourcePath }).db });
+  assert.equal(immutableSource.status, 400);
+  assert.deepEqual(await immutableSource.json(), { error: "Redirect source paths are immutable; archive this record before governing another source" });
+
+  const editorPublish = await request("/api/admin/redirects", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(redirect) }, { DB: createD1Mock([], { role: "editor", active: 1 }).db });
+  assert.equal(editorPublish.status, 403);
+
+  const runtimeDb = createD1Mock([], sql => sql.includes("SELECT destination_path") ? { destinationPath: "/products" } : null);
+  const english = await request("/en/products/legacy-family/legacy-product?utm_source=qa", {}, { DB: runtimeDb.db });
+  assert.equal(english.status, 308);
+  assert.equal(english.headers.get("location"), "http://localhost/en/products?utm_source=qa");
+  const chinese = await request("/zh/products/legacy-family/legacy-product", {}, { DB: runtimeDb.db });
+  assert.equal(chinese.status, 308);
+  assert.equal(chinese.headers.get("location"), "http://localhost/zh/products");
+
+  const staleTargetDb = createD1Mock([], sql => sql.includes("FROM route_redirects") ? { destinationPath: "/not-public" } : null);
+  const staleTarget = await request("/en/products/legacy-family/legacy-product", {}, { DB: staleTargetDb.db });
+  assert.equal(staleTarget.status, 404);
+  assert.equal(staleTarget.headers.get("location"), null);
+
+  const runtimeChainDb = createD1Mock([], sql => sql.includes("SELECT destination_path") ? { destinationPath: "/products" } : sql.includes("FROM route_redirects") ? { id: "chained-runtime-redirect" } : null);
+  const runtimeChain = await request("/en/products/legacy-family/legacy-product", {}, { DB: runtimeChainDb.db });
+  assert.equal(runtimeChain.status, 404);
+  assert.equal(runtimeChain.headers.get("location"), null);
+});
+
 test("renders private CMS routes and truthful empty resource centers", async () => {
   const cms = await request("/en/admin/content");
   assert.equal(cms.status, 200);
@@ -601,6 +652,14 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.match(cmsHtml, /<button type="button">applications<\/button>/i);
   assert.match(cmsHtml, /Expansion-language review/i);
   assert.match(cmsHtml, /Spanish, Arabic and Russian versions/i);
+
+  const redirectWorkspace = await request("/en/admin/redirects");
+  assert.equal(redirectWorkspace.status, 200);
+  const redirectHtml = await redirectWorkspace.text();
+  assert.match(redirectHtml, /Carry retired routes into current canonical pages/i);
+  assert.match(redirectHtml, /Destination canonical path/i);
+  assert.match(redirectHtml, /forbids redirect chains/i);
+  assert.match(redirectHtml, /name="robots" content="noindex, nofollow/i);
 
   const seoWorkspace = await request("/en/admin/seo");
   const seoHtml = await seoWorkspace.text();

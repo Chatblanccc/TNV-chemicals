@@ -8,6 +8,7 @@ import { InquiryForm, MobileNav } from "./site-interactions";
 import { AdminInquiries } from "./admin-inquiries";
 import { AdminContent } from "./admin-content";
 import { AdminSeo, AdminUsers } from "./admin-settings";
+import { AdminRedirects } from "./admin-redirects";
 import { GlobalSearch } from "./global-search";
 import { SelectionAssistant } from "./selection-assistant";
 import { Analytics } from "./analytics";
@@ -254,12 +255,12 @@ function Insights({ slug, locale, routeBase, siteArticles, siteProducts, siteApp
 }
 
 function AdminNavigation({ locale, route }: { locale: Locale; route: string }) {
-  const items = [["/admin", locale === "zh" ? "总览" : "Overview"], ["/admin/inquiries", locale === "zh" ? "询盘" : "Inquiries"], ["/admin/content", locale === "zh" ? "内容" : "Content"], ["/admin/seo", "SEO"], ["/admin/analytics", locale === "zh" ? "分析" : "Analytics"], ["/admin/users", locale === "zh" ? "权限" : "Access"]];
+  const items = [["/admin", locale === "zh" ? "总览" : "Overview"], ["/admin/inquiries", locale === "zh" ? "询盘" : "Inquiries"], ["/admin/content", locale === "zh" ? "内容" : "Content"], ["/admin/seo", "SEO"], ["/admin/redirects", locale === "zh" ? "重定向" : "Redirects"], ["/admin/analytics", locale === "zh" ? "分析" : "Analytics"], ["/admin/users", locale === "zh" ? "权限" : "Access"]];
   return <nav className="admin-navigation" aria-label={locale === "zh" ? "管理后台" : "Administration"}>{items.map(([href, label]) => <Link key={href} href={localizedPath(locale, href)} aria-current={route === href ? "page" : undefined}>{label}</Link>)}</nav>;
 }
 
 function AdminHub({ locale }: { locale: Locale }) {
-  const items = [["/admin/inquiries", locale === "zh" ? "询盘管理" : "Inquiry management", locale === "zh" ? "筛选线索并记录销售阶段。" : "Qualify leads and maintain the sales pipeline."], ["/admin/content", locale === "zh" ? "内容管理" : "Content management", locale === "zh" ? "维护产品、应用、文章、证书与下载。" : "Maintain products, applications, articles, certificates and downloads."], ["/admin/seo", "SEO management", locale === "zh" ? "维护页面级搜索信息。" : "Manage page-level search metadata."], ["/admin/analytics", locale === "zh" ? "分析报告" : "Analytics", locale === "zh" ? "查看获客、搜索、产品与询盘转化。" : "Review acquisition, search, product and inquiry conversion."], ["/admin/users", locale === "zh" ? "权限管理" : "Access control", locale === "zh" ? "配置管理员角色与权限。" : "Configure admin roles and permissions."]];
+  const items = [["/admin/inquiries", locale === "zh" ? "询盘管理" : "Inquiry management", locale === "zh" ? "筛选线索并记录销售阶段。" : "Qualify leads and maintain the sales pipeline."], ["/admin/content", locale === "zh" ? "内容管理" : "Content management", locale === "zh" ? "维护产品、应用、文章、证书与下载。" : "Maintain products, applications, articles, certificates and downloads."], ["/admin/seo", "SEO management", locale === "zh" ? "维护页面级搜索信息。" : "Manage page-level search metadata."], ["/admin/redirects", locale === "zh" ? "重定向管理" : "Redirect governance", locale === "zh" ? "在变更公开 URL 前保护旧路径。" : "Protect retired public URLs before route changes."], ["/admin/analytics", locale === "zh" ? "分析报告" : "Analytics", locale === "zh" ? "查看获客、搜索、产品与询盘转化。" : "Review acquisition, search, product and inquiry conversion."], ["/admin/users", locale === "zh" ? "权限管理" : "Access control", locale === "zh" ? "配置管理员角色与权限。" : "Configure admin roles and permissions."]];
   return <section className="admin-hub">{items.map(([href, title, description]) => <Link href={localizedPath(locale, href)} key={href}><span>{title}</span><p>{description}</p><Arrow/></Link>)}</section>;
 }
 
@@ -269,11 +270,12 @@ function AdminRoutePage({ locale, route }: { locale: Locale; route: string }) {
     "/admin/inquiries": [locale === "zh" ? "询盘管理" : "INQUIRY MANAGEMENT", locale === "zh" ? "从新线索到销售跟进。" : "From new lead to sales follow-up.", locale === "zh" ? "筛选询盘、核对客户需求并记录销售阶段。此区域仅向已授权管理员开放。" : "Filter inquiries, review buyer requirements and keep each sales stage current. This workspace is restricted to authorized administrators."],
     "/admin/content": [locale === "zh" ? "内容管理" : "CONTENT MANAGEMENT", locale === "zh" ? "让产品与资料经过审核后再发布。" : "Publish product and technical content through review.", locale === "zh" ? "产品、应用、文章、证书与下载各自保留验证状态、发布状态与操作记录。" : "Products, applications, articles, certificates and downloads retain independent verification, publishing and audit states."],
     "/admin/seo": ["SEO MANAGEMENT", locale === "zh" ? "维护可验证的搜索摘要。" : "Maintain attributable search summaries.", locale === "zh" ? "为公开路径配置双语标题、描述与关键词，不覆盖后台页面。" : "Configure bilingual titles, descriptions and keywords for public routes without exposing admin pages."],
+    "/admin/redirects": [locale === "zh" ? "重定向管理" : "REDIRECT GOVERNANCE", locale === "zh" ? "让旧路径安全指向当前 canonical 页面。" : "Carry retired routes into current canonical pages.", locale === "zh" ? "重定向经过草稿、发布与归档状态，并阻止循环、连续跳转或指向未公开内容。" : "Redirects use draft, published and archived states while preventing loops, chains and unpublished destinations."],
     "/admin/analytics": [locale === "zh" ? "分析报告" : "ANALYTICS", locale === "zh" ? "查看匿名获客与转化信号。" : "Review anonymous acquisition and conversion signals.", locale === "zh" ? "仅展示经同意记录的页面、国家、站内搜索、产品关注和询盘转化事件。" : "View consented page, country, site-search, product-interest and inquiry-conversion events."],
     "/admin/users": [locale === "zh" ? "权限管理" : "ACCESS CONTROL", locale === "zh" ? "按职责分配后台能力。" : "Assign workspace capability by responsibility.", locale === "zh" ? "管理员、市场、销售与编辑角色使用服务器端权限检查。" : "Admin, marketing, sales and editor roles are enforced by server-side permission checks."],
   };
   const [eyebrow, title, intro] = copy[route];
-  return <main className="admin-page"><section className="admin-heading"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{intro}</p></section><AdminNavigation locale={locale} route={route}/>{route === "/admin" ? <AdminHub locale={locale}/> : route === "/admin/inquiries" ? <AdminInquiries locale={locale}/> : route === "/admin/content" ? <AdminContent locale={locale}/> : route === "/admin/seo" ? <AdminSeo locale={locale}/> : route === "/admin/analytics" ? <AdminAnalytics locale={locale}/> : <AdminUsers locale={locale}/>}</main>;
+  return <main className="admin-page"><section className="admin-heading"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{intro}</p></section><AdminNavigation locale={locale} route={route}/>{route === "/admin" ? <AdminHub locale={locale}/> : route === "/admin/inquiries" ? <AdminInquiries locale={locale}/> : route === "/admin/content" ? <AdminContent locale={locale}/> : route === "/admin/seo" ? <AdminSeo locale={locale}/> : route === "/admin/redirects" ? <AdminRedirects locale={locale}/> : route === "/admin/analytics" ? <AdminAnalytics locale={locale}/> : <AdminUsers locale={locale}/>}</main>;
 }
 
 export function SitePage({ route: inputRoute, content, searchParams = {} }: { route: string; content: PublishedSiteContent; searchParams?: Record<string, string | string[] | undefined> }) {

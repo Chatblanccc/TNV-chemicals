@@ -273,14 +273,19 @@ trace remains an explicit launch check.
 **Status: Implemented.**
 
 - Administration routes cover dashboard, products, applications, articles,
-  certificates, downloads, inquiries, SEO, analytics, and users.
+  certificates, downloads, inquiries, SEO, redirects, analytics, and users.
 - D1 is used instead of the PRD's suggested PostgreSQL because the current
   Cloudflare/Vinext runtime already supplies a durable relational D1 binding.
   The data boundaries and migrations remain explicit rather than hiding storage
   in browser state.
-- Existing public URLs stay stable because saved slugs and SEO identities are
-  immutable. Dynamic records can extend the seed structure, while an explicit
-  unpublish or archive keeps the governed route withdrawn.
+- Existing public URLs stay stable because saved slugs, product categories, SEO
+  identities, and redirect source paths are immutable. Governed redirects use
+  draft, published, and archived states; publication requires a current public
+  canonical destination and rejects loops or redirect chains in either
+  direction. Active records issue locale-preserving HTTP 308 responses, retain
+  query parameters, and stop resolving if their destination is later withdrawn.
+  Dynamic records can extend the seed structure, while an explicit unpublish or
+  archive keeps the governed route withdrawn.
 - Unknown facts are omitted or marked pending; generated photography remains
   labelled for replacement in `app/media.ts`.
 

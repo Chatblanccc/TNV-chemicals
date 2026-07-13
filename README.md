@@ -196,6 +196,13 @@ canonical `/products/{category}/{slug}` route, preserving the established URL
 structure without creating duplicate indexable pages. Product slugs and
 categories lock after creation because both identify the canonical route;
 changing either requires a new governed record and an explicit redirect.
+Redirects are maintained at `/en/admin/redirects` and
+`/zh/admin/redirects` with draft, published, archived, permission, and audit
+states. Source paths are locale-neutral and immutable. Publication requires a
+current public canonical destination, rejects self-redirects and redirect
+chains in either direction, and applies a query-preserving HTTP 308 to both
+active locales. Runtime resolution rechecks the destination, so a later
+withdrawal stops the redirect instead of forwarding buyers to a known 404.
 
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add

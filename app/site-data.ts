@@ -68,4 +68,4 @@ export const articles = [
 
 export const knowledgeCategories = Array.from(new Map(articles.map(article => [article.category, article.categoryName])).entries()).map(([slug, name]) => ({ slug, name }));
 
-export const routePaths = ["/", "/search", "/assistant", "/company-profile", "/products", "/applications", "/custom-solutions", "/quality-compliance", "/technical-library", "/certificates", "/downloads", "/about", "/about/factory", "/about/research-development", "/about/quality-control", "/insights", "/knowledge", "/admin", "/admin/inquiries", "/admin/content", "/admin/seo", "/admin/analytics", "/admin/users", "/contact", "/request-quote", "/privacy-policy", "/terms"];
+export const routePaths = ["/", "/search", "/assistant", "/company-profile", "/products", "/applications", "/custom-solutions", "/quality-compliance", "/technical-library", "/certificates", "/downloads", "/about", "/about/factory", "/about/research-development", "/about/quality-control", "/insights", "/knowledge", "/admin", "/admin/inquiries", "/admin/content", "/admin/seo", "/admin/redirects", "/admin/analytics", "/admin/users", "/contact", "/request-quote", "/privacy-policy", "/terms"];

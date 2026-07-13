@@ -535,6 +535,7 @@ function contentWriteError(error: unknown): Response {
     return Response.json({ error: "Archive the current product document before publishing a replacement for the same type and language" }, { status: 409 });
   }
   if (message.includes("seo_metadata_path_locale_unique") || (message.includes("seo_metadata.path") && message.includes("seo_metadata.locale"))) return Response.json({ error: "SEO metadata already exists for that canonical path and language" }, { status: 409 });
+  if (message.includes("route_redirects_source_path_unique") || message.includes("route_redirects.source_path")) return Response.json({ error: "A redirect already exists for that source path" }, { status: 409 });
   if (message.toLowerCase().includes("unique")) return Response.json({ error: "That slug is already in use" }, { status: 409 });
   return storageError(error);
 }
@@ -765,6 +766,111 @@ async function handleAdminSeo(request: Request, env: Env): Promise<Response> {
   return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH" : "GET, POST" } });
 }
 
+type RedirectStatus = "draft" | "published" | "archived";
+type RedirectInput = { sourcePath?: string; destinationPath?: string; status?: RedirectStatus };
+
+function isCanonicalRoutePath(path: unknown, allowRoot: boolean) {
+  return typeof path === "string"
+    && path.length <= 300
+    && (allowRoot || path !== "/")
+    && /^\/(?:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*)?$/.test(path)
+    && (path === "/" || !path.endsWith("/"))
+    && path !== "/admin"
+    && !path.startsWith("/admin/");
+}
+
+function validateRedirectInput(input: RedirectInput): string | null {
+  if (!isCanonicalRoutePath(input.sourcePath, false)) return "Source must be a non-root canonical path without a locale, query, hash or trailing slash";
+  if (!isCanonicalRoutePath(input.destinationPath, true)) return "Destination must be a canonical public path without a locale, query, hash or trailing slash";
+  if (input.sourcePath === input.destinationPath) return "Source and destination paths must be different";
+  if (!input.status || !["draft", "published"].includes(input.status)) return "Invalid redirect status";
+  return null;
+}
+
+async function validatePublishedRedirect(input: RedirectInput, env: Env, recordId?: string): Promise<string | null> {
+  if (input.status !== "published") return null;
+  if (!await isPublicSeoPath(input.destinationPath!, env)) return "A redirect can publish only when its destination is a current public canonical route";
+  const chained = await env.DB.prepare("SELECT id FROM route_redirects WHERE source_path = ? AND status = 'published' AND (? = '' OR id <> ?) LIMIT 1")
+    .bind(input.destinationPath, recordId || "", recordId || "").first<{ id: string }>();
+  if (chained) return "Destination must be the final canonical route, not another published redirect";
+  const incoming = await env.DB.prepare("SELECT id FROM route_redirects WHERE destination_path = ? AND status = 'published' AND (? = '' OR id <> ?) LIMIT 1")
+    .bind(input.sourcePath, recordId || "", recordId || "").first<{ id: string }>();
+  if (incoming) return "Source is already a published redirect destination; publishing would create a redirect chain";
+  return null;
+}
+
+async function handleAdminRedirects(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const recordId = url.pathname.match(/^\/api\/admin\/redirects(?:\/([^/]+))?$/)?.[1];
+  const admin = await requireAdmin(request, env, request.method === "GET" ? "content:read" : "content:write");
+  if (admin instanceof Response) return admin;
+  if (!env.DB) return Response.json({ error: "Redirect storage is not configured" }, { status: 503 });
+  if (request.method === "GET" && !recordId) {
+    try {
+      const result = await env.DB.prepare("SELECT id, source_path AS sourcePath, destination_path AS destinationPath, status, updated_by AS updatedBy, created_at AS createdAt, updated_at AS updatedAt FROM route_redirects ORDER BY source_path").all();
+      return Response.json({ records: result.results });
+    } catch (error) { return storageError(error); }
+  }
+  if ((request.method === "POST" && !recordId) || (request.method === "PATCH" && recordId)) {
+    let input: RedirectInput;
+    try { input = await request.json() as RedirectInput; } catch { return Response.json({ error: "Invalid JSON" }, { status: 400 }); }
+    const validationError = validateRedirectInput(input);
+    if (validationError) return Response.json({ error: validationError }, { status: 400 });
+    if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
+    if (recordId) {
+      try {
+        const current = await env.DB.prepare("SELECT source_path AS sourcePath FROM route_redirects WHERE id = ?").bind(recordId).first<{ sourcePath: string }>();
+        if (!current) return Response.json({ error: "Redirect record not found" }, { status: 404 });
+        if (current.sourcePath !== input.sourcePath) return Response.json({ error: "Redirect source paths are immutable; archive this record before governing another source" }, { status: 400 });
+      } catch (lookupError) { return storageError(lookupError); }
+    }
+    try {
+      const relationshipError = await validatePublishedRedirect(input, env, recordId);
+      if (relationshipError) return Response.json({ error: relationshipError }, { status: 400 });
+      const id = recordId || crypto.randomUUID();
+      const now = Date.now();
+      const statement = recordId
+        ? env.DB.prepare("UPDATE route_redirects SET destination_path = ?, status = ?, updated_by = ?, updated_at = ? WHERE id = ?").bind(input.destinationPath, input.status, admin.email, now, id)
+        : env.DB.prepare("INSERT INTO route_redirects (id, source_path, destination_path, status, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, input.sourcePath, input.destinationPath, input.status, admin.email, now, now);
+      const action = input.status === "published" ? "published" : recordId ? "updated" : "created";
+      await env.DB.batch([statement, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, 'redirect', ?, ?, ?, ?)").bind(crypto.randomUUID(), id, action, admin.email, now)]);
+      return Response.json({ ok: true, id, status: input.status }, { status: recordId ? 200 : 201 });
+    } catch (writeError) { return contentWriteError(writeError); }
+  }
+  if (request.method === "DELETE" && recordId) {
+    const now = Date.now();
+    try {
+      if (!await env.DB.prepare("SELECT id FROM route_redirects WHERE id = ?").bind(recordId).first()) return Response.json({ error: "Redirect record not found" }, { status: 404 });
+      await env.DB.batch([
+        env.DB.prepare("UPDATE route_redirects SET status = 'archived', updated_by = ?, updated_at = ? WHERE id = ?").bind(admin.email, now, recordId),
+        env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, 'redirect', ?, 'archived', ?, ?)").bind(crypto.randomUUID(), recordId, admin.email, now),
+      ]);
+      return Response.json({ ok: true, id: recordId, status: "archived" });
+    } catch (archiveError) { return storageError(archiveError); }
+  }
+  return Response.json({ error: "Method not allowed" }, { status: 405, headers: { Allow: recordId ? "PATCH, DELETE" : "GET, POST" } });
+}
+
+async function resolvePublishedRedirect(request: Request, env: Env): Promise<Response | null> {
+  if (!env.DB || !["GET", "HEAD"].includes(request.method)) return null;
+  const url = new URL(request.url);
+  const localized = url.pathname.match(/^\/(en|zh)(\/.*)?$/);
+  if (!localized) return null;
+  const sourcePath = localized[2] || "/";
+  try {
+    const redirect = await env.DB.prepare("SELECT destination_path AS destinationPath FROM route_redirects WHERE source_path = ? AND status = 'published' LIMIT 1").bind(sourcePath).first<{ destinationPath: string }>();
+    if (!redirect) return null;
+    if (!await isPublicSeoPath(redirect.destinationPath, env)) return null;
+    const chained = await env.DB.prepare("SELECT id FROM route_redirects WHERE source_path = ? AND status = 'published' LIMIT 1").bind(redirect.destinationPath).first<{ id: string }>();
+    if (chained) return null;
+    url.pathname = `/${localized[1]}${redirect.destinationPath === "/" ? "" : redirect.destinationPath}`;
+    return Response.redirect(url, 308);
+  } catch {
+    // Keep public pages available before the redirect migration is applied.
+    return null;
+  }
+}
+
 type AdminUserInput = { email?: string; role?: AdminRole; active?: boolean };
 
 async function handleAdminUsers(request: Request, env: Env): Promise<Response> {
@@ -825,6 +931,7 @@ const worker = {
     if (url.pathname.startsWith("/api/admin/content/")) return withResponseHeaders(await handleAdminContent(request, env), request, env);
     if (url.pathname === "/api/admin/translations" || url.pathname.startsWith("/api/admin/translations/")) return withResponseHeaders(await handleAdminTranslations(request, env), request, env);
     if (url.pathname === "/api/admin/seo" || url.pathname.startsWith("/api/admin/seo/")) return withResponseHeaders(await handleAdminSeo(request, env), request, env);
+    if (url.pathname === "/api/admin/redirects" || url.pathname.startsWith("/api/admin/redirects/")) return withResponseHeaders(await handleAdminRedirects(request, env), request, env);
     if (url.pathname === "/api/admin/users" || url.pathname.startsWith("/api/admin/users/")) return withResponseHeaders(await handleAdminUsers(request, env), request, env);
     if (url.pathname.startsWith("/documents/")) return withResponseHeaders(await handlePublicDocument(request, env), request, env);
 
@@ -838,6 +945,9 @@ const worker = {
         },
       }, allowedWidths), request, env);
     }
+
+    const publishedRedirect = await resolvePublishedRedirect(request, env);
+    if (publishedRedirect) return withResponseHeaders(publishedRedirect, request, env);
 
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-site-pathname", url.pathname);
