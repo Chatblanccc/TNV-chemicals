@@ -48,6 +48,26 @@ test("preserves product context in the full inquiry form", async () => {
   assert.match(html, /action="\/api\/inquiry"/i);
 });
 
+test("renders the searchable product catalog without inventing technical values", async () => {
+  const response = await request("/en/products?q=flexographic");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Product finder/i);
+  assert.match(html, /Search product name, series code or application/i);
+  assert.match(html, /Technical data pending verification/i);
+  assert.doesNotMatch(html, /CAS No\.|Purity:|ISO 9001/i);
+});
+
+test("adds qualification context and truthful structured product properties", async () => {
+  const response = await request("/en/products/printing-inks/water-based-flexographic-ink", {}, { SITE_URL: "https://example.com" });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Prepare a qualification-ready brief/i);
+  assert.match(html, /Pending company and grade verification/i);
+  assert.match(html, /additionalProperty/i);
+  assert.match(html, /PropertyValue/i);
+});
+
 test("returns a real 404 for unknown localized routes", async () => {
   const response = await request("/zh/products/does-not-exist");
   assert.equal(response.status, 404);

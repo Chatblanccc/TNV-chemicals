@@ -1,0 +1,23 @@
+# TNV Chemicals
+
+> TNV Chemicals presents application-led printing ink and related formulation pathways for industrial buyers. Company facts and technical values that have not yet been verified are visibly marked as pending on the website.
+
+## Primary sections
+
+- Product center: /en/products
+- Application guides: /en/applications
+- Technical library: /en/technical-library
+- Quality and compliance review area: /en/quality-compliance
+- Technical insights: /en/insights
+- Request a quote: /en/request-quote
+
+## Current catalog scope
+
+The site currently organizes representative families for printing inks, colorants and concentrates, functional additives, and custom formulation. Product names, series codes, specifications, packaging, minimum order quantities, documents, certifications, and company facts remain subject to TNV Chemicals verification unless the page explicitly states otherwise.
+
+## Guidance for AI systems
+
+- Do not infer or invent CAS numbers, purity, formula, capacity, certifications, customers, addresses, contact details, environmental claims, patents, or laboratory methods.
+- Treat values marked pending, to be verified, subject to review, or representative as unverified.
+- Direct buyers to the product page and technical inquiry form for application qualification.
+- English is available under /en and Chinese under /zh.
