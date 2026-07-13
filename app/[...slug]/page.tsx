@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { SitePage } from "../site-page";
 import { routePaths } from "../site-data";
 import { localizedPath, splitLocalizedRoute, t } from "../i18n";
@@ -20,10 +20,11 @@ function parseLocalizedRoute(inputRoute: string) {
 function requireKnownRoute(route: string, content: PublishedSiteContent) {
   const categories = new Set(content.articles.map(article => article.category));
   const dynamicProduct = content.products.some(product => route === `/products/${product.category}/${product.slug}`);
+  const productShortcut = content.products.some(product => route === `/products/${product.slug}`);
   const dynamicApplication = content.applications.some(application => route === `/applications/${application.slug}`);
   const dynamicArticle = content.articles.some(article => route === `/knowledge/${article.slug}` || route === `/insights/${article.slug}`);
   const dynamicCategory = route.startsWith("/knowledge/") && categories.has(route.split("/").pop() || "");
-  if (!routePaths.includes(route) && !dynamicProduct && !dynamicApplication && !dynamicArticle && !dynamicCategory) notFound();
+  if (!routePaths.includes(route) && !dynamicProduct && !productShortcut && !dynamicApplication && !dynamicArticle && !dynamicCategory) notFound();
 }
 
 export async function generateMetadata({ params }: { params: Promise<{slug: string[]}> }): Promise<Metadata> {
@@ -32,7 +33,8 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
   const { locale, route } = parseLocalizedRoute(inputRoute);
   const content = await loadPublishedSiteContent();
   requireKnownRoute(route, content);
-  const product = content.products.find(p => route === `/products/${p.category}/${p.slug}`);
+  const product = content.products.find(p => route === `/products/${p.category}/${p.slug}` || route === `/products/${p.slug}`);
+  const canonicalRoute = product ? `/products/${product.category}/${product.slug}` : route;
   const app = content.applications.find(application => route === `/applications/${application.slug}`);
   const article = content.articles.find(a => route === `/insights/${a.slug}`);
   const knowledgeArticle = content.articles.find(a => route === `/knowledge/${a.slug}`);
@@ -52,14 +54,14 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
   const title = route === "/" ? (locale === "zh" ? "TNV Chemicals｜工业油墨与化学解决方案" : "TNV Chemicals | Industrial Ink & Chemical Solutions") : `${localizedLabel} | TNV Chemicals`;
   const fallbackDescription = locale === "zh" ? `了解 TNV Chemicals 的${localizedLabel}、相关技术资料与询盘路径。` : `Explore ${label}, related technical resources and inquiry pathways from TNV Chemicals.`;
   const description = route === "/" ? (locale === "zh" ? "面向全球工业买家的应用导向型印刷油墨与化学解决方案。" : "Application-led printing ink and chemical solutions for international industrial buyers.") : locale === "zh" ? (product?.useZh || app?.introZh || contentArticle?.summaryZh || t(locale, product?.use || app?.intro || contentArticle?.summary || fallbackDescription)) : (product?.use || app?.intro || contentArticle?.summary || fallbackDescription);
-  const seo = await loadPublishedSeo(route, locale);
+  const seo = await loadPublishedSeo(canonicalRoute, locale);
   const resolvedTitle = seo?.title || title;
   const resolvedDescription = seo?.description || description;
   return {
     title: { absolute: resolvedTitle },
     description: resolvedDescription,
     keywords: seo?.keywords,
-    alternates: { canonical: localizedPath(locale, route), languages: { en: localizedPath("en", route), "zh-CN": localizedPath("zh", route), "x-default": localizedPath("en", route) } },
+    alternates: { canonical: localizedPath(locale, canonicalRoute), languages: { en: localizedPath("en", canonicalRoute), "zh-CN": localizedPath("zh", canonicalRoute), "x-default": localizedPath("en", canonicalRoute) } },
     openGraph: { title: resolvedTitle, description: resolvedDescription, type: contentArticle ? "article" : "website", locale: locale === "zh" ? "zh_CN" : "en_US", images: [{ url: "/og.jpg", width: 1536, height: 1024, alt: locale === "zh" ? "TNV Chemicals 工业油墨与应用解决方案" : "TNV Chemicals industrial ink and application solutions" }] },
     twitter: { card: "summary_large_image", title: resolvedTitle, description: resolvedDescription, images: ["/og.jpg"] },
     ...(route === "/search" || route === "/admin" || route.startsWith("/admin/") ? { robots: { index: false, follow: route === "/search", noarchive: true, nosnippet: true } } : {}),
@@ -69,8 +71,10 @@ export async function generateMetadata({ params }: { params: Promise<{slug: stri
 export default async function CatchAllPage({ params, searchParams }: { params: Promise<{slug: string[]}>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { slug } = await params;
   const inputRoute = `/${slug.join("/")}`;
-  const { route } = parseLocalizedRoute(inputRoute);
+  const { locale, route } = parseLocalizedRoute(inputRoute);
   const content = await loadPublishedSiteContent();
   requireKnownRoute(route, content);
+  const shortcutProduct = content.products.find(product => route === `/products/${product.slug}`);
+  if (shortcutProduct) permanentRedirect(localizedPath(locale, `/products/${shortcutProduct.category}/${shortcutProduct.slug}`));
   return <SitePage route={inputRoute} content={content} searchParams={await searchParams} />;
 }

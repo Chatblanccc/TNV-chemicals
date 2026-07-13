@@ -95,8 +95,8 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 ## TNV launch configuration
 
 The site is safe-by-default: preview builds emit `noindex` metadata and an
-`X-Robots-Tag` header, and the sitemap remains empty until launch is explicitly
-approved.
+`X-Robots-Tag` header, closes `robots.txt`, and keeps the sitemap empty until
+launch is explicitly approved.
 
 - `SITE_LAUNCH_READY=true` enables indexing and the production sitemap. Set it
   only after verified company facts and technical documents replace every
@@ -164,6 +164,9 @@ structured specifications, and product-linked downloads. Empty identity fields
 are omitted rather than guessed. Published TDS, SDS, and COA records appear on
 their product page only when the file record is both verified and published;
 otherwise the page keeps an explicit pending or batch-confirmation state.
+The PRD-compatible `/products/{slug}` shortcut permanently redirects to the
+canonical `/products/{category}/{slug}` route, preserving the established URL
+structure without creating duplicate indexable pages.
 
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add

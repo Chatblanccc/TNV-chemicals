@@ -131,6 +131,12 @@ final result: passed
   schema. Checks at 1024/768/390/360 showed `scrollWidth <= clientWidth` with no
   browser warnings or errors. The fixture was archived and the page returned to
   its honest pending-verification state before handoff.
+- Repeated the local-only company fixture check after wiring the shared footer
+  and company fact sheet: the verified legal name, manufacturing statement,
+  email, and phone appeared consistently with `scrollWidth == clientWidth` and
+  no browser warnings. The PRD `/products/{slug}` shortcut resolved to the
+  category-qualified canonical URL. The fixture was archived immediately after
+  verification.
 - Added governed product-category records to the existing content workspace.
   Category labels remain typographic metadata rather than a new card layer, so
   the Material Atlas hierarchy and existing product routes remain unchanged.

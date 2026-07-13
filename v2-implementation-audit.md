@@ -27,6 +27,8 @@ Status meanings:
   benefits, packaging, structured specifications, and document linkage.
 - Public routes preserve the existing `/products/{category}/{slug}` structure;
   verified dynamic products can be added without removing seeded routes.
+- The PRD's `/products/{slug}` form is supported as a permanent shortcut to
+  the category-qualified canonical URL, avoiding duplicate indexable pages.
 - Product metadata, Product JSON-LD, breadcrumbs, inquiry handoff, application
   qualification, and explicit verification state are rendered in
   `app/[...slug]/page.tsx` and `app/site-page.tsx`.

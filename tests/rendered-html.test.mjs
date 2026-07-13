@@ -42,6 +42,15 @@ test("redirects the root URL to the canonical English locale", async () => {
   assert.equal(new URL(response.headers.get("location"), "http://localhost").pathname, "/en");
 });
 
+test("keeps preview robots closed until explicit launch approval", async () => {
+  const response = await request("/robots.txt");
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /User-Agent:\s*\*/i);
+  assert.match(body, /Disallow:\s*\//i);
+  assert.doesNotMatch(body, /Sitemap:/i);
+});
+
 test("server-renders localized homepages with safe preview indexing", async () => {
   const english = await request("/en");
   assert.equal(english.status, 200);
@@ -136,6 +145,12 @@ test("adds qualification context and truthful structured product properties", as
   assert.match(html, /Pending company and grade verification/i);
   assert.match(html, /additionalProperty/i);
   assert.match(html, /PropertyValue/i);
+});
+
+test("permanently redirects the PRD product shortcut to the canonical category route", async () => {
+  const response = await request("/en/products/water-based-flexographic-ink");
+  assert.equal(response.status, 308);
+  assert.equal(new URL(response.headers.get("location"), "http://localhost").pathname, "/en/products/printing-inks/water-based-flexographic-ink");
 });
 
 test("renders the bilingual knowledge center and topic routes", async () => {
