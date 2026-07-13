@@ -239,6 +239,84 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
 .mobile-language { margin-top: 14px; padding: 12px 0; display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 800; }
 .mobile-menu .button { width: 100%; margin-top: 22px; }
 
+/* Chinese typography needs its own rhythm: the Latin editorial face falls back
+   to a CJK serif, where compressed line-height and negative tracking feel crowded. */
+[lang^="zh"] {
+  font-family: "Noto Sans SC", "Microsoft YaHei", "PingFang SC", sans-serif;
+  letter-spacing: .018em;
+}
+[lang^="zh"] p,
+[lang^="zh"] li,
+[lang^="zh"] td,
+[lang^="zh"] .fact-sheet,
+[lang^="zh"] .footer-top { line-height: 1.82; }
+[lang^="zh"] .review-bar { letter-spacing: .08em; line-height: 1.65; }
+[lang^="zh"] .header nav { gap: 42px; letter-spacing: .08em; }
+[lang^="zh"] .button,
+[lang^="zh"] .text-link,
+[lang^="zh"] .language-button,
+[lang^="zh"] .card-link,
+[lang^="zh"] .mobile-language { letter-spacing: .055em; }
+[lang^="zh"] .eyebrow,
+[lang^="zh"] .section-number,
+[lang^="zh"] .product-code,
+[lang^="zh"] .evidence-grid > a > span,
+[lang^="zh"] .product-visual span,
+[lang^="zh"] .inquiry-ready > span,
+[lang^="zh"] .footer-top h3 { letter-spacing: .14em; line-height: 1.75; }
+[lang^="zh"] :is(
+  .hero h1,
+  .section-intro h2,
+  .application-cards h3,
+  .product-card h3,
+  .evidence-grid h3,
+  .technical-index h2,
+  .technical-links b,
+  .closing-cta h2,
+  .section-head h2,
+  .split h2,
+  .product-content h2,
+  .faq h2,
+  .editorial h2,
+  .page-hero h1,
+  .product-hero h1,
+  .product-visual b,
+  .application-list h2,
+  .library-grid h2,
+  .article-grid h3,
+  .article-page h1,
+  .article-page h2,
+  .rfq h2,
+  .inquiry-ready h3,
+  .mobile-menu nav a
+) {
+  font-family: "Noto Serif SC", "Songti SC", SimSun, serif;
+  font-style: normal;
+  letter-spacing: .025em;
+  line-height: 1.18;
+  text-wrap: pretty;
+}
+[lang^="zh"] .hero h1 {
+  max-width: 9.5em;
+  margin-block: 34px 40px;
+  font-size: clamp(54px, 5.25vw, 82px);
+  line-height: 1.14;
+  letter-spacing: .018em;
+}
+[lang^="zh"] .hero h1 br { display: none; }
+[lang^="zh"] .hero h1 em,
+[lang^="zh"] .closing-cta h2 em { font-style: normal; }
+[lang^="zh"] .hero-copy > p { max-width: 34em; line-height: 1.9; }
+[lang^="zh"] .page-hero h1,
+[lang^="zh"] .product-hero h1 { line-height: 1.12; letter-spacing: .018em; }
+[lang^="zh"] .section-intro h2,
+[lang^="zh"] .closing-cta h2,
+[lang^="zh"] .rfq h2 { line-height: 1.2; }
+[lang^="zh"] .product-card h3,
+[lang^="zh"] .application-cards h3,
+[lang^="zh"] .article-grid h3 { line-height: 1.35; }
+[lang^="zh"] .placeholder { line-height: 1.55; letter-spacing: .025em; }
+
 @media (max-width: 1120px) {
   .header nav { gap: 24px; }
   .header-actions > .button { display: none; }
@@ -311,6 +389,13 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
   .application-list > a > svg { display: none; }
   .footer-top { grid-template-columns: 1fr; }
   .footer-bottom { flex-direction: column; gap: 18px; }
+  [lang^="zh"] .hero-copy { min-height: 650px; padding-top: 62px; }
+  [lang^="zh"] .hero h1 { max-width: 100%; font-size: clamp(43px, 12.5vw, 58px); line-height: 1.16; }
+  [lang^="zh"] .section-intro h2,
+  [lang^="zh"] .closing-cta h2 { font-size: 42px; }
+  [lang^="zh"] .page-hero h1,
+  [lang^="zh"] .product-hero h1 { font-size: 48px; line-height: 1.16; }
+  [lang^="zh"] .inquiry-page .page-hero h1 { font-size: 42px; line-height: 1.18; }
 }
 
 @media (prefers-reduced-motion: reduce) {
