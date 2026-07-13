@@ -250,3 +250,24 @@ final result: passed
   Product JSON-LD. The fixture was archived and its route returned 404 after QA.
 - Automated acceptance before browser QA: lint passed, TypeScript passed,
   production build passed, and all 28 rendered/API tests passed.
+
+## 2026-07-13 governed application-product relationships
+
+- Replaced the application page's implicit first-three-product behavior for
+  verified CMS records with an explicit list of reviewed product slugs.
+- The public resolver includes only products that remain available in the
+  published site content. Missing, archived, and unpublished references do not
+  render.
+- Verified applications with no related products show a truthful empty state
+  and a reachable technical-inquiry CTA instead of an inferred recommendation.
+  Seed placeholder applications retain their clearly labelled representative
+  starting points until TNV publishes governed application records.
+- Browser checks on the application editor at 1440, 1024, 768, 390, and 360 CSS
+  pixels confirmed the relationship field remains visible and
+  `scrollWidth == clientWidth`.
+- A local-only verified application linked exclusively to
+  `industrial-color-concentrate`; its page rendered exactly that one product and
+  no generic ink fallback. The same record then passed the empty-relationship
+  state check before being archived, after which its route returned 404.
+- Browser logs contained no warnings or errors. Lint, direct TypeScript checking,
+  production build, and all 28 rendered/API tests passed.

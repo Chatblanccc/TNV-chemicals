@@ -18,7 +18,7 @@ export type PublishedArticle = {
   checklist: string[]; checklistZh: string[]; faq: string[][]; faqZh: string[][];
 };
 
-export type PublishedApplication = { slug: string; name: string; nameZh?: string; intro: string; introZh?: string; challenges: string[]; challengesZh?: string[]; verificationStatus?: "pending" | "verified" };
+export type PublishedApplication = { slug: string; name: string; nameZh?: string; intro: string; introZh?: string; challenges: string[]; challengesZh?: string[]; relatedProductSlugs?: string[]; verificationStatus?: "pending" | "verified" };
 export type PublishedCategory = { slug: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; verificationStatus?: "pending" | "verified" };
 export type PublishedCompanyProfile = {
   slug: string; legalName: string; legalNameZh?: string; businessType?: string; businessTypeZh?: string;
@@ -110,7 +110,7 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       const data = objectValue(row.dataJson);
       const en = translation("application", row.id, "en");
       const zh = translation("application", row.id, "zh");
-      return { slug: row.slug, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), intro: stringValue(en.intro) || stringValue(data.introEn), introZh: stringValue(zh.intro) || stringValue(data.introZh), challenges: stringArray(en.challenges).length ? stringArray(en.challenges) : stringArray(data.challenges), challengesZh: stringArray(zh.challenges).length ? stringArray(zh.challenges) : stringArray(data.challengesZh), verificationStatus: "verified" };
+      return { slug: row.slug, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), intro: stringValue(en.intro) || stringValue(data.introEn), introZh: stringValue(zh.intro) || stringValue(data.introZh), challenges: stringArray(en.challenges).length ? stringArray(en.challenges) : stringArray(data.challenges), challengesZh: stringArray(zh.challenges).length ? stringArray(zh.challenges) : stringArray(data.challengesZh), relatedProductSlugs: stringArray(data.relatedProducts), verificationStatus: "verified" };
     });
     const articleOverrides: PublishedArticle[] = articleRows.map(row => {
       const data = objectValue(row.dataJson);

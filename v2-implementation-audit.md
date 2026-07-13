@@ -55,6 +55,9 @@ must be approved by TNV before launch.
 - Verified records merge by slug and create dynamic `/applications/{slug}`
   routes, sitemap entries, search results, homepage paths, and article-related
   links.
+- Application editors govern related product slugs. Verified application pages
+  resolve only currently public product records and expose an honest inquiry
+  handoff when no verified relationship has been published.
 - Existing application routes remain available through the seed fallback.
 
 ## 3. SEO content and Knowledge Center

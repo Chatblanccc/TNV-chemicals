@@ -294,9 +294,15 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.deepEqual(await invalidMoq.json(), { error: "MOQ values must be short verified text" });
 
   const applicationDb = createD1Mock();
-  const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
+  const application = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-application", status: "published", verificationStatus: "verified", data: { nameEn: "Verified application", introEn: "Verified application introduction", challenges: ["Verified buyer challenge"], relatedProducts: ["verified-product"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: applicationDb.db });
   assert.equal(application.status, 201);
   assert.ok(applicationDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_applications")));
+  const applicationInsert = applicationDb.executed.find(statement => statement.sql.includes("INSERT INTO cms_applications"));
+  assert.ok(applicationInsert.args.some(value => typeof value === "string" && value.includes('"relatedProducts":["verified-product"]')));
+
+  const invalidRelationship = await request("/api/admin/content/applications", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "invalid-relationship", status: "draft", verificationStatus: "pending", data: { nameEn: "Draft application", introEn: "Draft application introduction", relatedProducts: ["Not a slug"] } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(invalidRelationship.status, 400);
+  assert.deepEqual(await invalidRelationship.json(), { error: "Related products must be a list of valid product slugs" });
 
   const articleDb = createD1Mock();
   const article = await request("/api/admin/content/articles", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-article", category: "technical-guides", status: "published", verificationStatus: "verified", data: { titleEn: "Verified article", summaryEn: "Verified article summary", authorEn: "Verified Author", publishDate: "2026-07-13", coverMediaKey: "evidenceQc" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: articleDb.db });

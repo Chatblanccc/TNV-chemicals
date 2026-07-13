@@ -182,6 +182,10 @@ structure without creating duplicate indexable pages.
 Applications have the same draft, review, verification, publishing, audit, and
 translation lifecycle as products and articles. A verified application can add
 a dynamic `/applications/{slug}` route without removing any existing route.
+Application editors maintain an explicit list of related published product
+slugs. Public pages resolve only matching products; a missing, archived, or
+unpublished product remains hidden, and an empty verified relationship renders
+an inquiry handoff instead of an inferred recommendation.
 
 Articles support bilingual titles, summaries, bodies, author names, explicit
 publication dates, related content, checklists, FAQs, and a cover selected only
