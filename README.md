@@ -129,8 +129,8 @@ approved.
 The private administration workspace uses the Material Atlas interface and D1
 as its durable source of truth:
 
-- `/en/admin/content` and `/zh/admin/content` manage products, applications,
-  knowledge articles, certificates, and downloads.
+- `/en/admin/content` and `/zh/admin/content` manage products, product
+  categories, applications, knowledge articles, certificates, and downloads.
 - `/en/admin/seo` and `/zh/admin/seo` manage page-level bilingual titles,
   descriptions, and keywords.
 - `/en/admin/users` and `/zh/admin/users` manage the `admin`, `marketing`,
@@ -149,11 +149,13 @@ using the administration workspace. Bootstrap administrators come from
 `ADMIN_EMAILS`; subsequent users and roles live in `admin_users`. All content
 writes and publication decisions are recorded in `content_events`.
 
-Published CMS products, applications, and articles merge into the seed catalog by slug, so
-existing public routes remain stable while verified content can progressively
-replace placeholders. Published page-level SEO overrides are applied at render
-time, and the launch-gated sitemap includes published dynamic routes. Admin
-routes remain noindex and are excluded from sitemap discovery.
+Published CMS products, categories, applications, and articles merge into the
+seed catalog by slug, so existing public routes remain stable while verified
+content can progressively replace placeholders. A published category controls
+the localized category label used by its products. Published page-level SEO
+overrides are applied at render time, and the launch-gated sitemap includes
+published dynamic routes. Admin routes remain noindex and are excluded from
+sitemap discovery.
 
 Products support verified CAS number, formula, molecular weight, purity,
 appearance, descriptions, intended uses, applications, benefits, packaging,

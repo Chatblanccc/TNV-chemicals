@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { cmsApplications, cmsArticles, cmsProducts, certificates, contentTranslations, downloads, seoMetadata } from "../db/schema";
+import { cmsApplications, cmsArticles, cmsCategories, cmsProducts, certificates, contentTranslations, downloads, seoMetadata } from "../db/schema";
 import { applications as seedApplications, articles as seedArticles, products as seedProducts } from "./site-data";
 
 export type PublishedProduct = {
@@ -17,11 +17,12 @@ export type PublishedArticle = {
 };
 
 export type PublishedApplication = { slug: string; name: string; nameZh?: string; intro: string; introZh?: string; challenges: string[]; challengesZh?: string[]; verificationStatus?: "pending" | "verified" };
+export type PublishedCategory = { slug: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; verificationStatus?: "pending" | "verified" };
 
 export type PublishedCertificate = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; issuedDate?: string; expiresDate?: string };
 export type PublishedDownload = { id: string; slug: string; type: string; name: string; nameZh?: string; description?: string; descriptionZh?: string; fileUrl: string; productSlug?: string; locale?: string };
 export type PublishedSeo = { title: string; description: string; keywords: string[] };
-export type PublishedSiteContent = { products: PublishedProduct[]; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
+export type PublishedSiteContent = { products: PublishedProduct[]; categories: PublishedCategory[]; applications: PublishedApplication[]; articles: PublishedArticle[]; certificates: PublishedCertificate[]; downloads: PublishedDownload[] };
 
 const titleCase = (value: string) => value.split("-").map(part => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part).join(" ");
 const objectValue = (value: string) => { try { const parsed = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}; } catch { return {}; } };
@@ -37,6 +38,7 @@ function mergeBySlug<T extends { slug: string }>(seed: T[], overrides: T[]) {
 }
 
 const seededProducts: PublishedProduct[] = seedProducts.map(product => ({ ...product, specs: product.specs.map(pair => [...pair]) }));
+const seededCategories: PublishedCategory[] = Array.from(new Map(seedProducts.map(product => [product.category, { slug: product.category, name: product.categoryName }])).values());
 const seededApplications: PublishedApplication[] = seedApplications.map(application => ({ ...application, challenges: [...application.challenges] }));
 const seededArticles: PublishedArticle[] = seedArticles.map(article => ({ ...article, faq: article.faq.map(pair => [...pair]), faqZh: article.faqZh.map(pair => [...pair]) }));
 
@@ -44,8 +46,9 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
   try {
     const { getDb } = await import("../db");
     const db = getDb();
-    const [productRows, applicationRows, articleRows, certificateRows, downloadRows, translationRows] = await Promise.all([
+    const [productRows, categoryRows, applicationRows, articleRows, certificateRows, downloadRows, translationRows] = await Promise.all([
       db.select().from(cmsProducts).where(and(eq(cmsProducts.status, "published"), eq(cmsProducts.verificationStatus, "verified"))),
+      db.select().from(cmsCategories).where(and(eq(cmsCategories.status, "published"), eq(cmsCategories.verificationStatus, "verified"))).catch(() => []),
       db.select().from(cmsApplications).where(and(eq(cmsApplications.status, "published"), eq(cmsApplications.verificationStatus, "verified"))).catch(() => []),
       db.select().from(cmsArticles).where(and(eq(cmsArticles.status, "published"), eq(cmsArticles.verificationStatus, "verified"))),
       db.select().from(certificates).where(and(eq(certificates.status, "published"), eq(certificates.verificationStatus, "verified"))),
@@ -78,6 +81,12 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
       if ((packagingZh || packaging) && !specsZh.some(([label]) => label === "包装")) specsZh.push(["包装", packagingZh || packaging]);
       return { slug: row.slug, code: row.code, category: row.category, categoryName: stringValue(en.categoryName) || stringValue(data.categoryNameEn) || titleCase(row.category), categoryNameZh: stringValue(zh.categoryName) || stringValue(data.categoryNameZh), name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), casNumber, formula, molecularWeight, purity, appearance, description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), use: stringValue(en.use) || stringValue(data.useEn), useZh: stringValue(zh.use) || stringValue(data.useZh), packaging, packagingZh, applications: stringArray(en.applications).length ? stringArray(en.applications) : stringArray(data.applications), applicationsZh: stringArray(zh.applications).length ? stringArray(zh.applications) : stringArray(data.applicationsZh), benefits: stringArray(en.benefits).length ? stringArray(en.benefits) : stringArray(data.benefits), benefitsZh: stringArray(zh.benefits).length ? stringArray(zh.benefits) : stringArray(data.benefitsZh), specs, specsZh, verificationStatus: "verified" };
     });
+    const categoryOverrides: PublishedCategory[] = categoryRows.map(row => {
+      const data = objectValue(row.dataJson);
+      const en = translation("category", row.id, "en");
+      const zh = translation("category", row.id, "zh");
+      return { slug: row.slug, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), verificationStatus: "verified" };
+    });
     const applicationOverrides: PublishedApplication[] = applicationRows.map(row => {
       const data = objectValue(row.dataJson);
       const en = translation("application", row.id, "en");
@@ -94,9 +103,12 @@ export async function loadPublishedSiteContent(): Promise<PublishedSiteContent> 
     });
     const publishedCertificates: PublishedCertificate[] = certificateRows.map(row => { const data = objectValue(row.dataJson); const en = translation("certificate", row.id, "en"); const zh = translation("certificate", row.id, "zh"); return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), issuedDate: stringValue(data.issuedDate), expiresDate: stringValue(data.expiresDate) }; }).filter(item => item.name && item.fileUrl);
     const publishedDownloads: PublishedDownload[] = downloadRows.map(row => { const data = objectValue(row.dataJson); const en = translation("download", row.id, "en"); const zh = translation("download", row.id, "zh"); return { id: row.id, slug: row.slug, type: row.type, name: stringValue(en.name) || stringValue(data.nameEn), nameZh: stringValue(zh.name) || stringValue(data.nameZh), description: stringValue(en.description) || stringValue(data.descriptionEn), descriptionZh: stringValue(zh.description) || stringValue(data.descriptionZh), fileUrl: stringValue(data.fileUrl), productSlug: stringValue(data.productSlug), locale: stringValue(data.locale) }; }).filter(item => item.name && item.fileUrl);
-    return { products: mergeBySlug(seededProducts, productOverrides), applications: mergeBySlug(seededApplications, applicationOverrides), articles: mergeBySlug(seededArticles, articleOverrides), certificates: publishedCertificates, downloads: publishedDownloads };
+    const publishedCategories = mergeBySlug(seededCategories, categoryOverrides);
+    const categoryMap = new Map(publishedCategories.map(category => [category.slug, category]));
+    const publishedProducts = mergeBySlug(seededProducts, productOverrides).map(product => { const category = categoryMap.get(product.category); return category ? { ...product, categoryName: category.name, categoryNameZh: category.nameZh || product.categoryNameZh } : product; });
+    return { products: publishedProducts, categories: publishedCategories, applications: mergeBySlug(seededApplications, applicationOverrides), articles: mergeBySlug(seededArticles, articleOverrides), certificates: publishedCertificates, downloads: publishedDownloads };
   } catch {
-    return { products: seededProducts, applications: seededApplications, articles: seededArticles, certificates: [], downloads: [] };
+    return { products: seededProducts, categories: seededCategories, applications: seededApplications, articles: seededArticles, certificates: [], downloads: [] };
   }
 }
 

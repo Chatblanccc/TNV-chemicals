@@ -18,7 +18,8 @@ Status meanings:
 
 **Status: Implemented; real catalog verification still required.**
 
-- Governed product records: `cms_products` in `db/schema.ts`.
+- Governed product and category records: `cms_products` and `cms_categories`
+  in `db/schema.ts`.
 - Product CMS: `/en/admin/content` and `/zh/admin/content` in
   `app/admin-content.tsx`.
 - Fields: slug, code, category, bilingual name/description/use, verified CAS,
@@ -31,6 +32,9 @@ Status meanings:
   `app/[...slug]/page.tsx` and `app/site-page.tsx`.
 - Only `published + verified` CMS rows reach public output through
   `app/published-content.ts`.
+- Categories have independent bilingual copy, verification, publication,
+  translation, and audit states; verified labels are applied to every product
+  in that category without changing its public route.
 
 The current public catalog contains representative placeholders. Real product
 names, codes, identity values, technical limits, packaging, MOQ, and documents

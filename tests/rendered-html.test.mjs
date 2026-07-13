@@ -240,6 +240,11 @@ test("enforces verification and RBAC across CMS content writes", async () => {
   assert.equal(application.status, 201);
   assert.ok(applicationDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_applications")));
 
+  const categoryDb = createD1Mock();
+  const category = await request("/api/admin/content/categories", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "verified-category", status: "published", verificationStatus: "verified", data: { nameEn: "Verified category", descriptionEn: "Verified category description" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: categoryDb.db });
+  assert.equal(category.status, 201);
+  assert.ok(categoryDb.executed.some(statement => statement.sql.includes("INSERT INTO cms_categories")));
+
   const unverified = await request("/api/admin/content/certificates", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ slug: "pending-certificate", type: "ISO", status: "published", verificationStatus: "pending", data: { nameEn: "Pending certificate" } }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
   assert.equal(unverified.status, 400);
   assert.deepEqual(await unverified.json(), { error: "Only verified content can be published" });
@@ -314,6 +319,7 @@ test("renders private CMS routes and truthful empty resource centers", async () 
   assert.match(cmsHtml, /Publish product and technical content through review/i);
   assert.match(cmsHtml, /Molecular weight — verified only/i);
   assert.match(cmsHtml, /Packaging — verified only/i);
+  assert.match(cmsHtml, /<button type="button">categories<\/button>/i);
   assert.match(cmsHtml, /<button type="button">applications<\/button>/i);
 
   const seoWorkspace = await request("/en/admin/seo");

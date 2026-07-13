@@ -122,6 +122,10 @@ final result: passed
 
 ## 2026-07-13 V2 platform completion pass
 
+- Added governed product-category records to the existing content workspace.
+  Category labels remain typographic metadata rather than a new card layer, so
+  the Material Atlas hierarchy and existing product routes remain unchanged.
+
 - Added global search across product identity fields, applications, knowledge
   content, and published documents with exact code/CAS ranking and a truthful
   empty state.

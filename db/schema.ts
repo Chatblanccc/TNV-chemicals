@@ -56,6 +56,18 @@ export const cmsProducts = sqliteTable("cms_products", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, table => [uniqueIndex("cms_products_slug_unique").on(table.slug), index("cms_products_status_idx").on(table.status, table.updatedAt)]);
 
+export const cmsCategories = sqliteTable("cms_categories", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull(),
+  status: text("status", { enum: ["draft", "review", "published", "archived"] }).notNull().default("draft"),
+  verificationStatus: text("verification_status", { enum: ["pending", "verified", "rejected"] }).notNull().default("pending"),
+  dataJson: text("data_json").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+}, table => [uniqueIndex("cms_categories_slug_unique").on(table.slug), index("cms_categories_status_idx").on(table.status, table.updatedAt)]);
+
 export const cmsApplications = sqliteTable("cms_applications", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull(),
@@ -122,7 +134,7 @@ export const seoMetadata = sqliteTable("seo_metadata", {
 
 export const contentEvents = sqliteTable("content_events", {
   id: text("id").primaryKey(),
-  entityType: text("entity_type", { enum: ["product", "application", "article", "certificate", "download", "seo", "admin_user"] }).notNull(),
+  entityType: text("entity_type", { enum: ["product", "category", "application", "article", "certificate", "download", "seo", "admin_user"] }).notNull(),
   entityId: text("entity_id").notNull(),
   action: text("action", { enum: ["created", "updated", "submitted", "published", "unpublished", "archived", "role_changed"] }).notNull(),
   actorEmail: text("actor_email").notNull(),
@@ -131,7 +143,7 @@ export const contentEvents = sqliteTable("content_events", {
 
 export const contentTranslations = sqliteTable("content_translations", {
   id: text("id").primaryKey(),
-  entityType: text("entity_type", { enum: ["product", "application", "article", "certificate", "download"] }).notNull(),
+  entityType: text("entity_type", { enum: ["product", "category", "application", "article", "certificate", "download"] }).notNull(),
   entityId: text("entity_id").notNull(),
   locale: text("locale", { enum: ["en", "zh", "es", "ar", "ru"] }).notNull(),
   status: text("status", { enum: ["draft", "review", "published", "archived"] }).notNull().default("draft"),
