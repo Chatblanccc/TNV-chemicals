@@ -109,11 +109,13 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
   }
   const text = (key: string) => typeof input[key] === "string" ? input[key].trim() : "";
   if (text("website")) return Response.json({ ok: true, inquiryId: crypto.randomUUID() });
-  const required = ["email", "area", "company", "country", "requirement", "privacyAccepted"];
+  const required = ["email", "area", "company", "country", "quantity", "unit", "requirement", "privacyAccepted"];
   if (required.some(key => key === "privacyAccepted" ? input[key] !== true : !text(key))) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
-  if (!/^\S+@\S+\.\S+$/.test(text("email")) || text("requirement").length > 5000) {
+  const quantity = Number(text("quantity"));
+  const acceptedUnits = ["kg", "metric-tonne", "litre", "other"];
+  if (!/^\S+@\S+\.\S+$/.test(text("email")) || !Number.isFinite(quantity) || quantity <= 0 || !acceptedUnits.includes(text("unit")) || text("phone").length > 100 || text("requirement").length > 5000) {
     return Response.json({ error: "Invalid inquiry" }, { status: 400 });
   }
   const inquiryId = crypto.randomUUID();
@@ -124,11 +126,11 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
   let finalNotificationStatus: "not_configured" | "pending" | "sent" | "failed" = notificationStatus;
   if (!env.DB) return Response.json({ error: "Inquiry storage is not configured" }, { status: 503 });
   try {
-    await env.DB.prepare("INSERT INTO customers (id, email, company, country, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET company = excluded.company, country = excluded.country, updated_at = excluded.updated_at")
-      .bind(customerId, text("email").toLowerCase(), text("company"), text("country"), timestamp, timestamp).run();
+    await env.DB.prepare("INSERT INTO customers (id, email, company, country, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET company = excluded.company, country = excluded.country, phone = excluded.phone, updated_at = excluded.updated_at")
+      .bind(customerId, text("email").toLowerCase(), text("company"), text("country"), text("phone") || null, timestamp, timestamp).run();
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO inquiries (id, customer_id, status, area, product_code, requirement, locale, notification_status, source_path, created_at, updated_at) VALUES (?, (SELECT id FROM customers WHERE email = ?), 'new', ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(inquiryId, text("email").toLowerCase(), text("area"), text("productCode") || null, text("requirement"), text("locale") === "zh" ? "zh" : "en", notificationStatus, text("sourcePath") || null, timestamp, timestamp),
+      env.DB.prepare("INSERT INTO inquiries (id, customer_id, status, area, product_code, quantity, unit, requirement, locale, notification_status, source_path, created_at, updated_at) VALUES (?, (SELECT id FROM customers WHERE email = ?), 'new', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(inquiryId, text("email").toLowerCase(), text("area"), text("productCode") || null, text("quantity"), text("unit"), text("requirement"), text("locale") === "zh" ? "zh" : "en", notificationStatus, text("sourcePath") || null, timestamp, timestamp),
       env.DB.prepare("INSERT INTO inquiry_events (id, inquiry_id, event_type, to_status, created_at) VALUES (?, ?, 'created', 'new', ?)")
         .bind(crypto.randomUUID(), inquiryId, timestamp),
     ]);
@@ -153,7 +155,7 @@ async function handleInquiry(request: Request, env: Env): Promise<Response> {
       const upstream = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(env.INQUIRY_WEBHOOK_TOKEN ? { Authorization: `Bearer ${env.INQUIRY_WEBHOOK_TOKEN}` } : {}) },
-        body: JSON.stringify({ inquiryId, receivedAt, email: text("email"), area: text("area"), company: text("company"), country: text("country"), requirement: text("requirement"), productCode: text("productCode") || undefined, locale: text("locale") || "en" }),
+        body: JSON.stringify({ inquiryId, receivedAt, email: text("email"), area: text("area"), company: text("company"), country: text("country"), phone: text("phone") || undefined, quantity: text("quantity"), unit: text("unit"), requirement: text("requirement"), productCode: text("productCode") || undefined, locale: text("locale") || "en" }),
       });
       if (upstream.ok) notification = "sent";
     } catch {
@@ -259,8 +261,8 @@ async function handleAdminInquiries(request: Request, env: Env): Promise<Respons
     if (status && !inquiryStatuses.includes(status as InquiryStatus)) return Response.json({ error: "Invalid status" }, { status: 400 });
     const pattern = `%${query.replaceAll("%", "").replaceAll("_", "")}%`;
     try {
-      const result = await env.DB.prepare("SELECT i.id, i.status, i.area, i.product_code AS productCode, i.requirement, i.locale, i.notification_status AS notificationStatus, i.created_at AS createdAt, i.updated_at AS updatedAt, c.email, c.company, c.country FROM inquiries i JOIN customers c ON c.id = i.customer_id WHERE (? = '' OR i.status = ?) AND (? = '' OR c.email LIKE ? OR c.company LIKE ? OR i.product_code LIKE ? OR i.requirement LIKE ?) ORDER BY i.created_at DESC LIMIT 100")
-        .bind(status, status, query, pattern, pattern, pattern, pattern).all();
+      const result = await env.DB.prepare("SELECT i.id, i.status, i.area, i.product_code AS productCode, i.quantity, i.unit, i.requirement, i.locale, i.notification_status AS notificationStatus, i.created_at AS createdAt, i.updated_at AS updatedAt, c.email, c.company, c.country, c.phone FROM inquiries i JOIN customers c ON c.id = i.customer_id WHERE (? = '' OR i.status = ?) AND (? = '' OR c.email LIKE ? OR c.company LIKE ? OR c.phone LIKE ? OR i.product_code LIKE ? OR i.requirement LIKE ?) ORDER BY i.created_at DESC LIMIT 100")
+        .bind(status, status, query, pattern, pattern, pattern, pattern, pattern).all();
       return Response.json({ inquiries: result.results });
     } catch (error) {
       return storageError(error);

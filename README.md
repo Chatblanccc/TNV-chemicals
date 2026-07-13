@@ -213,9 +213,10 @@ does not treat model output as a quotation, specification, or technical
 commitment.
 
 The webhook receives JSON containing `inquiryId`, `receivedAt`, `email`,
-`area`, `company`, `country`, `requirement`, optional `productCode`, and
-`locale`. Keep it HTTPS-only, validate again downstream, and store secrets in
-deployment bindings rather than source control. The CRM pipeline is `new` →
+`area`, `company`, `country`, `quantity`, `unit`, `requirement`, optional
+`phone`, optional `productCode`, and `locale`. Keep it HTTPS-only, validate
+again downstream, and store secrets in deployment bindings rather than source
+control. The CRM pipeline is `new` →
 `contacted` → `quotation_sent` → `negotiation` → `completed`, with `archived`
 available for closed records; every status transition is written to the audit
 event table.

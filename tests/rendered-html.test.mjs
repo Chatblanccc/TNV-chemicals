@@ -77,6 +77,9 @@ test("preserves product context in the full inquiry form", async () => {
   const html = await response.text();
   assert.match(html, /询价产品/i);
   assert.match(html, /name="productCode"[^>]*value="WB-FX Series"/i);
+  assert.match(html, /<input(?=[^>]*name="quantity")(?=[^>]*type="number")(?=[^>]*required)[^>]*>/i);
+  assert.match(html, /<select(?=[^>]*name="unit")(?=[^>]*required)[^>]*>/i);
+  assert.match(html, /<input(?=[^>]*name="phone")(?=[^>]*type="tel")[^>]*>/i);
   assert.match(html, /<input(?=[^>]*name="privacyAccepted")(?=[^>]*required)[^>]*>/i);
   assert.match(html, /action="\/api\/inquiry"/i);
 });
@@ -197,7 +200,7 @@ test("returns a real 404 for unknown localized routes", async () => {
 });
 
 test("requires durable storage before accepting an inquiry", async () => {
-  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh" };
+  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", phone: "+86 123 4567 8901", quantity: "5", unit: "metric-tonne", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh" };
   const response = await request("/api/inquiry", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) });
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: "Inquiry storage is not configured" });
@@ -205,7 +208,7 @@ test("requires durable storage before accepting an inquiry", async () => {
 
 test("stores an inquiry even when outbound notification is not configured", async () => {
   const { db, executed } = createD1Mock();
-  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh", sourcePath: "/zh/request-quote" };
+  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", phone: "+86 123 4567 8901", quantity: "5", unit: "metric-tonne", requirement: "Paper flexographic application", privacyAccepted: true, locale: "zh", sourcePath: "/zh/request-quote" };
   const response = await request("/api/inquiry", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) }, { DB: db });
   assert.equal(response.status, 201);
   const body = await response.json();
@@ -214,6 +217,17 @@ test("stores an inquiry even when outbound notification is not configured", asyn
   assert.match(body.inquiryId, /^[0-9a-f-]{36}$/i);
   assert.ok(executed.some(statement => statement.sql.includes("INSERT INTO inquiries")));
   assert.ok(executed.some(statement => statement.sql.includes("INSERT INTO inquiry_events")));
+  assert.ok(executed.some(statement => statement.args.includes("metric-tonne")));
+  assert.ok(executed.some(statement => statement.args.includes("+86 123 4567 8901")));
+});
+
+test("rejects invalid quantity and unit values before storing an inquiry", async () => {
+  const payload = { email: "buyer@example.com", area: "printing-inks", company: "Example", country: "CN", quantity: "0", unit: "carton", requirement: "Paper flexographic application", privacyAccepted: true, locale: "en" };
+  const { db, executed } = createD1Mock();
+  const response = await request("/api/inquiry", { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(payload) }, { DB: db });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid inquiry" });
+  assert.equal(executed.length, 0);
 });
 
 test("protects the inquiry workspace with identity and an explicit allowlist", async () => {

@@ -5,6 +5,7 @@ export const customers = sqliteTable("customers", {
   email: text("email").notNull(),
   company: text("company").notNull(),
   country: text("country").notNull(),
+  phone: text("phone"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 }, table => [uniqueIndex("customers_email_unique").on(table.email)]);
@@ -15,6 +16,8 @@ export const inquiries = sqliteTable("inquiries", {
   status: text("status", { enum: ["new", "contacted", "quotation_sent", "negotiation", "completed", "archived"] }).notNull().default("new"),
   area: text("area").notNull(),
   productCode: text("product_code"),
+  quantity: text("quantity"),
+  unit: text("unit"),
   requirement: text("requirement").notNull(),
   locale: text("locale", { enum: ["en", "zh", "es", "ar", "ru"] }).notNull().default("en"),
   notificationStatus: text("notification_status", { enum: ["not_configured", "pending", "sent", "failed"] }).notNull().default("not_configured"),

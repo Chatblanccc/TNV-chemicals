@@ -333,6 +333,7 @@ th { width: 38%; color: var(--muted); font-weight: 650; }
 .inquiry-form input, .inquiry-form select, .inquiry-form textarea { width: 100%; padding: 14px; border: 1px solid rgba(7, 31, 47, .28); background: rgba(255, 255, 255, .78); color: var(--ink); outline: none; }
 .inquiry-form input:focus, .inquiry-form select:focus, .inquiry-form textarea:focus { border-color: var(--focus); box-shadow: 0 0 0 2px rgba(0, 174, 181, .18); }
 .inquiry-form [aria-invalid="true"] { border-color: var(--error); }
+.quantity-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, .8fr); gap: 8px; }
 .inquiry-form .full, .inquiry-form small { grid-column: 1 / -1; }
 .inquiry-form small { color: #526c68; line-height: 1.5; }
 .field-error { color: var(--error); font-size: 10px; font-weight: 700; }
@@ -466,6 +467,8 @@ footer { padding: 64px var(--gutter) 22px; background: var(--ink); color: var(--
 .inquiry-list time, .inquiry-list small, .inquiry-list code { color: var(--muted); font-size: 12px; }
 .inquiry-customer h2 { margin: 0 0 8px; font-family: var(--font-editorial), "Noto Serif SC", serif; font-size: 28px; font-weight: 400; }
 .inquiry-customer p, .inquiry-requirement p { margin: 0; line-height: 1.65; }
+.inquiry-customer .inquiry-purchase { margin-top: 12px; color: var(--muted); font-size: 13px; }
+.inquiry-purchase span { color: var(--ink); font-weight: 750; }
 .inquiry-requirement > span { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .inquiry-list footer { padding-top: 14px; border-top: 1px solid var(--line); }
 .admin-state { display: flex; min-height: 340px; align-items: flex-start; flex-direction: column; gap: 22px; }

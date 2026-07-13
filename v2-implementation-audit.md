@@ -91,14 +91,14 @@ New articles should be published through the existing verified editorial flow.
 
 **Status: Implemented; production recipient configuration required.**
 
-- Durable customers, inquiries, status events, source path, product code, and
-  notification state in D1.
+- Durable customers, inquiries, status events, source path, product code,
+  quantity, unit, optional phone, and notification state in D1.
 - Public bilingual inquiry form with validation, privacy acknowledgement,
   loading, storage error, success, and honest draft states.
 - Pipeline: `new`, `contacted`, `quotation_sent`, `negotiation`, `completed`,
   and `archived`.
-- Private filtering, search, status updates, and audit events at
-  `/admin/inquiries`.
+- Private filtering (including phone), search, buyer contact and order-volume
+  review, status updates, and audit events at `/admin/inquiries`.
 - Optional HTTPS notification adapter through `INQUIRY_WEBHOOK_URL` and
   `INQUIRY_WEBHOOK_TOKEN`; it can connect the stored lead to an email,
   enterprise WeChat, or other reviewed sales workflow. A notification failure

@@ -43,6 +43,13 @@
       "when": 1783931766933,
       "tag": "0005_square_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783933888772,
+      "tag": "0006_curvy_wild_child",
+      "breakpoints": true
     }
   ]
 }

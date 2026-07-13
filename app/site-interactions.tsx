@@ -37,7 +37,7 @@ export function MobileNav({ items, ctaHref, ctaLabel, languageHref, languageLabe
   </div>;
 }
 
-type InquiryErrors = Partial<Record<"email" | "area" | "company" | "country" | "requirement" | "privacyAccepted", string>>;
+type InquiryErrors = Partial<Record<"email" | "area" | "company" | "country" | "quantity" | "unit" | "requirement" | "privacyAccepted", string>>;
 
 export function InquiryForm({ compact = false, labels, productCode, initialRequirement, locale = "en", privacyHref }: {
   compact?: boolean;
@@ -75,6 +75,9 @@ function InquiryFormInner({ compact = false, labels, productCode, initialRequire
     if (!compact) {
       if (!String(data.get("company") || "").trim()) next.company = labels.requiredError;
       if (!String(data.get("country") || "").trim()) next.country = labels.requiredError;
+      const quantity = Number(String(data.get("quantity") || "").trim());
+      if (!Number.isFinite(quantity) || quantity <= 0) next.quantity = labels.quantityError;
+      if (!String(data.get("unit") || "").trim()) next.unit = labels.requiredError;
       if (!String(data.get("requirement") || "").trim()) next.requirement = labels.requirementError;
       if (data.get("privacyAccepted") !== "on") next.privacyAccepted = labels.privacyError;
     }
@@ -98,6 +101,9 @@ function InquiryFormInner({ compact = false, labels, productCode, initialRequire
           area: data.get("area"),
           company: data.get("company"),
           country: data.get("country"),
+          phone: data.get("phone"),
+          quantity: data.get("quantity"),
+          unit: data.get("unit"),
           requirement: data.get("requirement"),
           privacyAccepted: data.get("privacyAccepted") === "on",
           productCode,
@@ -152,6 +158,8 @@ function InquiryFormInner({ compact = false, labels, productCode, initialRequire
     {!compact && <>
       <label>{labels.company}<input name="company" required autoComplete="organization" placeholder={labels.companyPlaceholder} onChange={() => clearError("company")} aria-invalid={Boolean(errors.company)} aria-describedby={errors.company ? "company-error" : undefined} />{fieldError("company")}</label>
       <label>{labels.country}<input name="country" required autoComplete="country-name" placeholder={labels.countryPlaceholder} onChange={() => clearError("country")} aria-invalid={Boolean(errors.country)} aria-describedby={errors.country ? "country-error" : undefined} />{fieldError("country")}</label>
+      <label>{labels.phone}<input name="phone" type="tel" maxLength={100} autoComplete="tel" placeholder={labels.phonePlaceholder} /></label>
+      <label>{labels.quantity}<span className="quantity-field"><input name="quantity" type="number" min="0.01" step="any" inputMode="decimal" required placeholder={labels.quantityPlaceholder} onChange={() => clearError("quantity")} aria-invalid={Boolean(errors.quantity)} aria-describedby={errors.quantity ? "quantity-error" : undefined} /><select name="unit" defaultValue="" required onChange={() => clearError("unit")} aria-label={labels.unit} aria-invalid={Boolean(errors.unit)} aria-describedby={errors.unit ? "unit-error" : undefined}><option value="" disabled>{labels.unit}</option><option value="kg">{labels.unitKg}</option><option value="metric-tonne">{labels.unitTonne}</option><option value="litre">{labels.unitLitre}</option><option value="other">{labels.unitOther}</option></select></span>{fieldError("quantity")}{fieldError("unit")}</label>
       <label className="full">{labels.requirement}<textarea name="requirement" required maxLength={5000} rows={4} defaultValue={initialRequirement} placeholder={labels.requirementPlaceholder} onChange={() => clearError("requirement")} aria-invalid={Boolean(errors.requirement)} aria-describedby={errors.requirement ? "requirement-error" : undefined} />{fieldError("requirement")}</label>
       <label className="privacy-field full"><input name="privacyAccepted" type="checkbox" required onChange={() => clearError("privacyAccepted")} aria-invalid={Boolean(errors.privacyAccepted)} aria-describedby={errors.privacyAccepted ? "privacyAccepted-error" : undefined} /><span>{labels.privacyPrefix} <Link href={privacyHref}>{labels.privacyLink}</Link></span>{fieldError("privacyAccepted")}</label>
     </>}

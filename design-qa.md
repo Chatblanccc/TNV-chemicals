@@ -84,6 +84,9 @@ The side-by-side input compares the selected Material Atlas visual target and th
   allowlist, status filtering, keyword search, and the six-stage sales pipeline.
 - Inquiry creation now persists the customer, lead, source path, notification
   result, and audit events before any optional webhook notification is attempted.
+- The production inquiry contract now captures a required positive quantity and
+  controlled unit plus an optional phone/WhatsApp contact. The CRM and webhook
+  display and forward the same fields, while legacy inquiries remain readable.
 - Admin routes are excluded from sitemap and robots discovery and emit explicit
   noindex/nofollow metadata.
 - Exact CDP viewport checks at 1440, 1024, 768, 390, and 360 CSS pixels confirmed
@@ -188,3 +191,19 @@ final result: passed
   production company content.
 - The requirement-by-requirement implementation and production-input boundary
   is recorded in `v2-implementation-audit.md`.
+
+## 2026-07-13 inquiry qualification completion
+
+- Added required positive quantity and controlled unit fields plus an optional
+  phone/WhatsApp field to the public bilingual quote form.
+- The same values now persist in D1, appear in the private CRM, participate in
+  CRM search, and reach the optional HTTPS notification adapter.
+- Drizzle migration `0006_curvy_wild_child.sql` adds nullable columns so
+  existing customers and inquiries remain readable during rollout.
+- Browser checks on the Chinese quote page at 1440, 1024, 768, 390, and 360 CSS
+  pixels confirmed every new field is visible and
+  `scrollWidth == clientWidth`. The 390 px visual review preserved the Material
+  Atlas hierarchy, single-column form flow, reachable mobile navigation, and
+  readable quantity/unit grouping. No browser warnings or errors were present.
+- Automated acceptance: lint passed, TypeScript passed, production build
+  passed, and all 26 rendered/API tests passed.
