@@ -226,6 +226,12 @@ Twitter, and Article structured data.
 - `public/llms.txt`, canonical links, `hreflang`, Open Graph, Product and
   Organization structured data, launch-gated sitemap output, and admin-safe
   robots rules form the SEO/GEO boundary.
+- Published SEO overrides must target a currently public canonical route and an
+  active public locale. Paths omit locale prefixes, queries, hashes, and trailing
+  slashes; path and locale are locked after creation. Spanish, Arabic, and
+  Russian metadata can be prepared as drafts but cannot publish before those
+  public locale routes are activated. Keyword input is trimmed, deduplicated,
+  and limited to 20 governed terms.
 - English and Chinese are active public locales. English, Chinese, Spanish,
   Arabic, and Russian are supported as independently reviewed CMS translation
   records and SEO locales. Selecting a saved CMS record opens the expansion-

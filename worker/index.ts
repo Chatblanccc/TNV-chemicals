@@ -2,7 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { articleCoverMediaKeys } from "../app/media";
-import { products as seedProducts } from "../app/site-data";
+import { applications as seedApplications, articles as seedArticles, products as seedProducts, routePaths } from "../app/site-data";
 
 interface Env {
   ASSETS: Fetcher;
@@ -377,8 +377,12 @@ const contentStatuses: ContentStatus[] = ["draft", "review", "published", "archi
 const verificationStatuses: VerificationStatus[] = ["pending", "verified", "rejected"];
 const downloadTypes = ["sds", "tds", "coa", "catalog", "certificate", "other"];
 const productDocumentTypes = new Set(["sds", "tds", "coa"]);
-const seedProductSlugs = new Set(seedProducts.map(product => product.slug));
+const seedProductBySlug = new Map(seedProducts.map(product => [product.slug, product]));
+const seedApplicationSlugs = new Set(seedApplications.map(application => application.slug));
+const seedArticleBySlug = new Map(seedArticles.map(article => [article.slug, article]));
+const publicStaticRoutes = new Set(routePaths.filter(path => path !== "/search" && path !== "/admin" && !path.startsWith("/admin/")));
 const contentLocales = ["en", "zh", "es", "ar", "ru"] as const;
+const activePublicLocales = new Set(["en", "zh"]);
 
 function isSafeFileUrl(value: unknown): value is string {
   if (typeof value !== "string" || !value.trim()) return false;
@@ -441,14 +445,58 @@ function validateContentInput(type: ContentType, input: ContentInput): string | 
   return null;
 }
 
+type ManagedRouteRow = { id: string; slug: string; status: ContentStatus; verificationStatus: VerificationStatus; category?: string };
+
+async function cmsOwnsSeedLifecycle(entityType: "product" | "application" | "article", row: ManagedRouteRow, env: Env) {
+  if (row.status === "archived") return true;
+  const event = await env.DB.prepare("SELECT id FROM content_events WHERE entity_type = ? AND entity_id = ? AND action IN ('published', 'unpublished', 'archived') LIMIT 1").bind(entityType, row.id).first<{ id: string }>();
+  return Boolean(event);
+}
+
+async function resolvePublicProduct(productSlug: string, env: Env): Promise<{ category: string } | null> {
+  const seed = seedProductBySlug.get(productSlug);
+  const row = await env.DB.prepare("SELECT id, slug, category, status, verification_status AS verificationStatus FROM cms_products WHERE slug = ? LIMIT 1").bind(productSlug).first<ManagedRouteRow>();
+  if (row?.status === "published" && row.verificationStatus === "verified" && row.category) return { category: row.category };
+  if (seed && (!row || !await cmsOwnsSeedLifecycle("product", row, env))) return { category: seed.category };
+  return null;
+}
+
+async function isPublicApplication(applicationSlug: string, env: Env) {
+  const row = await env.DB.prepare("SELECT id, slug, status, verification_status AS verificationStatus FROM cms_applications WHERE slug = ? LIMIT 1").bind(applicationSlug).first<ManagedRouteRow>();
+  if (row?.status === "published" && row.verificationStatus === "verified") return true;
+  return seedApplicationSlugs.has(applicationSlug) && (!row || !await cmsOwnsSeedLifecycle("application", row, env));
+}
+
+async function resolvePublicArticle(articleSlug: string, env: Env): Promise<{ category: string } | null> {
+  const seed = seedArticleBySlug.get(articleSlug);
+  const row = await env.DB.prepare("SELECT id, slug, category, status, verification_status AS verificationStatus FROM cms_articles WHERE slug = ? LIMIT 1").bind(articleSlug).first<ManagedRouteRow>();
+  if (row?.status === "published" && row.verificationStatus === "verified" && row.category) return { category: row.category };
+  if (seed && (!row || !await cmsOwnsSeedLifecycle("article", row, env))) return { category: seed.category };
+  return null;
+}
+
+async function isPublicSeoPath(path: string, env: Env) {
+  if (publicStaticRoutes.has(path)) return true;
+  const productMatch = path.match(/^\/products\/([^/]+)\/([^/]+)$/);
+  if (productMatch) return (await resolvePublicProduct(productMatch[2], env))?.category === productMatch[1];
+  const applicationMatch = path.match(/^\/applications\/([^/]+)$/);
+  if (applicationMatch) return isPublicApplication(applicationMatch[1], env);
+  const articleMatch = path.match(/^\/(?:knowledge|insights)\/([^/]+)$/);
+  if (!articleMatch) return false;
+  const directArticle = await resolvePublicArticle(articleMatch[1], env);
+  if (directArticle) return true;
+  if (!path.startsWith("/knowledge/")) return false;
+  for (const article of seedArticles) {
+    if ((await resolvePublicArticle(article.slug, env))?.category === articleMatch[1]) return true;
+  }
+  const publishedCategory = await env.DB.prepare("SELECT id FROM cms_articles WHERE category = ? AND status = 'published' AND verification_status = 'verified' LIMIT 1").bind(articleMatch[1]).first<{ id: string }>();
+  return Boolean(publishedCategory);
+}
+
 async function validatePublishedDownloadRelationship(input: ContentInput, env: Env, recordId?: string): Promise<string | null> {
   if (input.status !== "published" || !input.data || typeof input.data.productSlug !== "string" || !input.data.productSlug) return null;
   const productSlug = input.data.productSlug;
-  const governedProduct = await env.DB.prepare("SELECT status, verification_status AS verificationStatus FROM cms_products WHERE slug = ? LIMIT 1").bind(productSlug).first<{ status: ContentStatus; verificationStatus: VerificationStatus }>();
-  const publicProduct = governedProduct
-    ? governedProduct.status === "published" && governedProduct.verificationStatus === "verified"
-    : seedProductSlugs.has(productSlug);
-  if (!publicProduct) return "Linked product must be published and verified before its document can be published";
+  if (!await resolvePublicProduct(productSlug, env)) return "Linked product must be published and verified before its document can be published";
   if (productDocumentTypes.has(input.type || "")) {
     const duplicate = await env.DB.prepare("SELECT id FROM downloads WHERE status = 'published' AND verification_status = 'verified' AND type = ? AND product_slug = ? AND locale = ? AND (? = '' OR id <> ?) LIMIT 1")
       .bind(input.type, productSlug, input.data.locale, recordId || "", recordId || "").first<{ id: string }>();
@@ -462,6 +510,7 @@ function contentWriteError(error: unknown): Response {
   if (message.includes("downloads_current_product_document_unique") || (message.includes("downloads.type") && message.includes("downloads.product_slug") && message.includes("downloads.locale"))) {
     return Response.json({ error: "Archive the current product document before publishing a replacement for the same type and language" }, { status: 409 });
   }
+  if (message.includes("seo_metadata_path_locale_unique") || (message.includes("seo_metadata.path") && message.includes("seo_metadata.locale"))) return Response.json({ error: "SEO metadata already exists for that canonical path and language" }, { status: 409 });
   if (message.toLowerCase().includes("unique")) return Response.json({ error: "That slug is already in use" }, { status: 409 });
   return storageError(error);
 }
@@ -623,12 +672,13 @@ async function handleAdminTranslations(request: Request, env: Env): Promise<Resp
 type SeoInput = { path?: string; locale?: typeof contentLocales[number]; status?: "draft" | "published"; title?: string; description?: string; keywords?: string[] };
 
 function validateSeoInput(input: SeoInput): string | null {
-  if (!input.path?.startsWith("/") || input.path.startsWith("//") || input.path === "/admin" || input.path.startsWith("/admin/")) return "A public site path is required";
+  if (!input.path || !/^\/(?:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*)?$/.test(input.path) || (input.path.length > 1 && input.path.endsWith("/")) || input.path === "/admin" || input.path.startsWith("/admin/")) return "Use a canonical public path without a locale, query, hash or trailing slash";
   if (!input.locale || !contentLocales.includes(input.locale)) return "A supported locale is required";
   if (!input.status || !["draft", "published"].includes(input.status)) return "Invalid SEO status";
   if (!input.title?.trim() || input.title.trim().length > 160) return "SEO title must be 1 to 160 characters";
   if (!input.description?.trim() || input.description.trim().length > 320) return "SEO description must be 1 to 320 characters";
-  if (!Array.isArray(input.keywords) || input.keywords.some(value => typeof value !== "string" || value.length > 80)) return "Keywords must be a list of short strings";
+  if (!Array.isArray(input.keywords) || input.keywords.length > 20 || input.keywords.some(value => typeof value !== "string" || !value.trim() || value.trim().length > 80)) return "Keywords must contain at most 20 non-empty short strings";
+  if (input.status === "published" && !activePublicLocales.has(input.locale)) return "This locale can remain in draft until its public site routes are activated";
   return null;
 }
 
@@ -654,12 +704,22 @@ async function handleAdminSeo(request: Request, env: Env): Promise<Response> {
     if (input.status === "published" && !rolePermissions[admin.role].has("content:publish")) return Response.json({ error: "Publishing permission required" }, { status: 403 });
     const id = recordId || crypto.randomUUID();
     const now = Date.now();
+    const normalizedKeywords = Array.from(new Set(input.keywords!.map(value => value.trim())));
     if (recordId) {
-      try { if (!await env.DB.prepare("SELECT id FROM seo_metadata WHERE id = ?").bind(recordId).first()) return Response.json({ error: "SEO record not found" }, { status: 404 }); } catch (lookupError) { return storageError(lookupError); }
+      try {
+        const current = await env.DB.prepare("SELECT path, locale FROM seo_metadata WHERE id = ?").bind(recordId).first<{ path: string; locale: string }>();
+        if (!current) return Response.json({ error: "SEO record not found" }, { status: 404 });
+        if (current.path !== input.path || current.locale !== input.locale) return Response.json({ error: "SEO path and language are immutable; create a separate entry for another canonical page or locale" }, { status: 400 });
+      } catch (lookupError) { return storageError(lookupError); }
+    }
+    if (input.status === "published") {
+      try {
+        if (!await isPublicSeoPath(input.path!, env)) return Response.json({ error: "SEO metadata can be published only for a currently public canonical route" }, { status: 400 });
+      } catch (routeError) { return storageError(routeError); }
     }
     const statement = recordId
-      ? env.DB.prepare("UPDATE seo_metadata SET path = ?, locale = ?, status = ?, title = ?, description = ?, keywords_json = ?, updated_by = ?, updated_at = ? WHERE id = ?").bind(input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(input.keywords), admin.email, now, id)
-      : env.DB.prepare("INSERT INTO seo_metadata (id, path, locale, status, title, description, keywords_json, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(input.keywords), admin.email, now, now);
+      ? env.DB.prepare("UPDATE seo_metadata SET path = ?, locale = ?, status = ?, title = ?, description = ?, keywords_json = ?, updated_by = ?, updated_at = ? WHERE id = ?").bind(input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(normalizedKeywords), admin.email, now, id)
+      : env.DB.prepare("INSERT INTO seo_metadata (id, path, locale, status, title, description, keywords_json, updated_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, input.path, input.locale, input.status, input.title!.trim(), input.description!.trim(), JSON.stringify(normalizedKeywords), admin.email, now, now);
     const action = input.status === "published" ? "published" : recordId ? "updated" : "created";
     try {
       await env.DB.batch([statement, env.DB.prepare("INSERT INTO content_events (id, entity_type, entity_id, action, actor_email, created_at) VALUES (?, 'seo', ?, ?, ?, ?)").bind(crypto.randomUUID(), id, action, admin.email, now)]);

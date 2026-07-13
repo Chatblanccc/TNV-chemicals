@@ -272,6 +272,33 @@ final result: passed
 - Browser logs contained no warnings or errors. Lint, direct TypeScript checking,
   production build, and all 28 rendered/API tests passed.
 
+## 2026-07-13 canonical SEO publication governance
+
+- Published SEO records now require canonical path syntax, an active English or
+  Chinese public locale, and a route that exists in the current published
+  content graph. Drafts remain available for future routes and Spanish, Arabic,
+  and Russian preparation.
+- Product route checks respect seed lifecycle ownership: a fresh seed product is
+  eligible, while the same product under an archived CMS record is rejected.
+  Product shortcuts, unknown paths, queries, hashes, trailing slashes, admin
+  paths, and search-result pages cannot receive published overrides.
+- Saved path and locale identities are locked in both the editor and API. The
+  editor now displays canonical-path guidance plus live title, description, and
+  keyword counts; the API trims and deduplicates up to 20 keywords.
+- A local-only metadata fixture for the canonical flexographic-ink product route
+  replaced the visible title and description while preserving canonical and
+  English/Chinese/x-default alternates. The real API rejected an unknown route
+  and a Spanish publication. D1 stored the deduplicated keyword list. The
+  fixture and its audit event were deleted after QA, restoring default metadata.
+- The selected SEO record was checked at 1440, 1024, 768, 390, and 360 CSS
+  pixels. Path and locale stayed locked, guidance remained visible, and
+  `scrollWidth == clientWidth` at every size. The inactive-locale warning was
+  visible and its publish action disabled.
+- The browser showed one expected Vinext HMR connection-close message while
+  source files were changing; the fresh page and production build had no
+  application runtime warning or error. Lint, TypeScript checking, production
+  build, and all 29 tests passed before final handoff.
+
 ## 2026-07-13 governed seed-content withdrawal
 
 - Product, category, application, and article seed fallbacks now follow CMS

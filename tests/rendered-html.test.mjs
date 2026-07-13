@@ -510,9 +510,41 @@ test("keeps the AI recommendation endpoint unavailable until explicitly connecte
 });
 
 test("protects SEO publishing and user administration by role", async () => {
-  const seo = { path: "/products", locale: "en", status: "published", title: "Verified product catalog", description: "Verified product catalog metadata for industrial buyers.", keywords: ["printing inks"] };
-  const adminSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(seo) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  const seo = { path: "/products", locale: "en", status: "published", title: "Verified product catalog", description: "Verified product catalog metadata for industrial buyers.", keywords: [" printing inks ", "printing inks"] };
+  const adminSeoDb = createD1Mock();
+  const adminSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify(seo) }, { ADMIN_EMAILS: "admin@example.com", DB: adminSeoDb.db });
   assert.equal(adminSeo.status, 201);
+  const seoInsert = adminSeoDb.executed.find(statement => statement.sql.includes("INSERT INTO seo_metadata"));
+  assert.ok(seoInsert.args.includes('["printing inks"]'));
+
+  const canonicalProductSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/products/printing-inks/water-based-flexographic-ink" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(canonicalProductSeo.status, 201);
+
+  const archivedProductSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/products/printing-inks/water-based-flexographic-ink" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], sql => sql.includes("FROM cms_products") ? { id: "archived-product", slug: "water-based-flexographic-ink", category: "printing-inks", status: "archived", verificationStatus: "verified" } : null).db });
+  assert.equal(archivedProductSeo.status, 400);
+  assert.deepEqual(await archivedProductSeo.json(), { error: "SEO metadata can be published only for a currently public canonical route" });
+
+  const unknownRouteSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/not-a-public-route" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(unknownRouteSeo.status, 400);
+  assert.deepEqual(await unknownRouteSeo.json(), { error: "SEO metadata can be published only for a currently public canonical route" });
+
+  const nonexistentInsightCategorySeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/insights/application-guides" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock([], null).db });
+  assert.equal(nonexistentInsightCategorySeo.status, 400);
+
+  const trailingSlashSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/products/" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(trailingSlashSeo.status, 400);
+
+  const inactiveLocaleSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, locale: "es" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(inactiveLocaleSeo.status, 400);
+  assert.deepEqual(await inactiveLocaleSeo.json(), { error: "This locale can remain in draft until its public site routes are activated" });
+
+  const spanishDraftSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, locale: "es", status: "draft" }) }, { ADMIN_EMAILS: "admin@example.com", DB: createD1Mock().db });
+  assert.equal(spanishDraftSeo.status, 201);
+
+  const immutableSeoDb = createD1Mock([], { path: "/products", locale: "en" });
+  const changedSeoIdentity = await request("/api/admin/seo/seo-id", { method: "PATCH", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "admin@example.com" }, body: JSON.stringify({ ...seo, path: "/applications", status: "draft" }) }, { ADMIN_EMAILS: "admin@example.com", DB: immutableSeoDb.db });
+  assert.equal(changedSeoIdentity.status, 400);
+  assert.deepEqual(await changedSeoIdentity.json(), { error: "SEO path and language are immutable; create a separate entry for another canonical page or locale" });
 
   const editorSeo = await request("/api/admin/seo", { method: "POST", headers: { accept: "application/json", "content-type": "application/json", "oai-authenticated-user-email": "editor@example.com" }, body: JSON.stringify(seo) }, { DB: createD1Mock([], { role: "editor", active: 1 }).db });
   assert.equal(editorSeo.status, 403);

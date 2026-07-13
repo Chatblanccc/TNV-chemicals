@@ -88,6 +88,16 @@ must be approved by TNV before launch.
   omitted instead of fabricated.
 - Dynamic content routes enter the launch-gated sitemap; admin and search-result
   pages have explicit indexing rules.
+- SEO publication resolves the current content graph before accepting an
+  override. Static pages and current canonical product, application, article,
+  and knowledge-category routes are eligible; missing, archived, shortcut, or
+  otherwise non-canonical paths remain draft-only.
+- Path and locale identities are immutable after creation. Canonical path syntax
+  excludes locale prefixes, queries, hashes, and trailing slashes. English and
+  Chinese metadata can publish now; Spanish, Arabic, and Russian remain editable
+  drafts until their public locale sites pass activation review.
+- The editor exposes title/description/keyword counts. Keywords are trimmed,
+  deduplicated, and limited to 20 short terms by the API.
 
 The PRD's article-count growth target is not a one-time software deliverable.
 New articles should be published through the existing verified editorial flow.
@@ -262,8 +272,9 @@ trace remains an explicit launch check.
   Cloudflare/Vinext runtime already supplies a durable relational D1 binding.
   The data boundaries and migrations remain explicit rather than hiding storage
   in browser state.
-- Existing public routes are preserved. Dynamic routes extend rather than
-  replace the seed structure.
+- Existing public URLs stay stable because saved slugs and SEO identities are
+  immutable. Dynamic records can extend the seed structure, while an explicit
+  unpublish or archive keeps the governed route withdrawn.
 - Unknown facts are omitted or marked pending; generated photography remains
   labelled for replacement in `app/media.ts`.
 
